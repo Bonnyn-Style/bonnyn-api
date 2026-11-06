@@ -1,0 +1,2573 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mi Panel de Control | Bonnyn</title>
+    
+    <!-- Configuración PWA y Enlace de Manifiesto -->
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#e11d48">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <style>
+        #mapa-admin { height: 220px; width: 100%; border-radius: 1rem; z-index: 10; }
+        @media print {
+            body * { visibility: hidden; }
+            #area-impresion-ticket, #area-impresion-ticket * { visibility: visible; }
+            #area-impresion-ticket { position: absolute; left: 0; top: 0; width: 100%; }
+        }
+    </style>
+</head>
+<body class="bg-pink-50/40 text-slate-800 font-sans antialiased min-h-screen p-4 sm:p-8">
+
+    <div class="max-w-7xl mx-auto space-y-6">
+        
+        <div id="alerta-suspension" class="hidden bg-rose-600 text-white p-5 rounded-3xl shadow-xl flex flex-col md:flex-row justify-between items-center gap-4 border border-rose-500">
+            <div class="flex items-center gap-3">
+                <div class="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center text-2xl shrink-0">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                </div>
+                <div>
+                    <h2 class="text-base font-black uppercase">¡Salón Temporalmente Suspendido!</h2>
+                    <p class="text-xs text-rose-100">Tu cuenta tiene una sanción administrativa o multa pendiente ($5.00). Para reactivar tu agenda y recibir reservas, debes reportar tu pago.</p>
+                </div>
+            </div>
+            <button onclick="irAReportarPagoSuscripcion()" class="px-5 py-2.5 bg-white text-rose-700 hover:bg-rose-50 font-black rounded-2xl text-xs transition uppercase shadow-md shrink-0">
+                🚀 Pagar / Reactivar Salón
+            </button>
+        </div>
+
+        <header class="bg-white rounded-3xl p-5 shadow-sm border border-pink-100 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-3">
+                <div class="w-12 h-12 rounded-full border-2 border-pink-200 overflow-hidden bg-pink-50 flex items-center justify-center shadow-inner">
+                    <img id="header-logo" src="" alt="Logo" class="w-full h-full object-cover hidden">
+                    <div id="header-logo-default" class="text-pink-600 font-black text-lg flex items-center justify-center w-full h-full">
+                        <i class="fa-solid fa-store"></i>
+                    </div>
+                </div>
+                <div>
+                    <h1 id="nombre-negocio-header" class="text-lg font-black text-slate-900">Mi Panel Bonnyn</h1>
+                    <p class="text-xs text-slate-400">Gestión de citas, contabilidad y finanzas en tiempo real</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2 flex-wrap justify-center">
+                <span id="badge-pais-moneda" class="bg-pink-50 text-pink-700 font-bold px-3 py-1.5 rounded-full text-xs border border-pink-100">🌍 VE / USD</span>
+                <a id="link-publico-reserva" href="#" target="_blank" class="px-4 py-2 bg-pink-50 hover:bg-pink-100 text-pink-700 font-bold rounded-2xl text-xs transition flex items-center gap-2 border border-pink-200">
+                    <i class="fa-solid fa-globe"></i> Ver Link de Reservas
+                </a>
+                <button onclick="cerrarSesion()" class="px-4 py-2 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 font-bold rounded-2xl text-xs transition flex items-center gap-2 border border-slate-200">
+                    <i class="fa-solid fa-right-from-bracket"></i> Salir
+                </button>
+            </div>
+        </header>
+
+        <div class="bg-white p-4 rounded-3xl shadow-sm border border-pink-100 flex flex-col sm:flex-row justify-between items-center gap-3 text-xs">
+            <span class="font-bold text-slate-600">TU ENLACE DE RESERVAS BONNYN:</span>
+            <div class="flex items-center gap-2 w-full sm:w-auto">
+                <input type="text" id="input-enlace-reserva" readonly class="p-2.5 bg-slate-50 border rounded-2xl text-pink-600 font-semibold w-full sm:w-80 text-center">
+                <button onclick="copiarLinkReserva()" class="px-4 py-2.5 bg-pink-500 hover:bg-pink-600 text-white font-bold rounded-2xl transition shadow-sm uppercase whitespace-nowrap">
+                    Copiar Link <i class="fa-solid fa-copy ml-1"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="bg-white p-5 rounded-3xl shadow-sm border border-pink-100 space-y-1">
+                <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Ingresos Hoy (Completados)</p>
+                <p id="ingresos-hoy" class="text-2xl font-black text-pink-600">$0.00</p>
+            </div>
+            <div class="bg-white p-5 rounded-3xl shadow-sm border border-pink-100 space-y-1">
+                <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Ingresos Esta Semana</p>
+                <p id="ingresos-semana" class="text-2xl font-black text-slate-800">$0.00</p>
+            </div>
+            <div class="bg-white p-5 rounded-3xl shadow-sm border border-pink-100 space-y-1">
+                <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Ingresos Este Mes</p>
+                <p id="ingresos-mes" class="text-2xl font-black text-slate-800">$0.00</p>
+            </div>
+        </div>
+
+        <div class="bg-gradient-to-r from-pink-500 to-rose-500 text-white p-5 rounded-3xl shadow-md border border-pink-400 space-y-3">
+            <div class="flex justify-between items-center">
+                <h2 class="font-black text-sm uppercase tracking-wider flex items-center gap-2">
+                    <i class="fa-solid fa-bolt-lightning text-yellow-300"></i> Atención Prioritaria (Pendientes y Citas de Hoy)
+                </h2>
+                <span id="badge-prioritarias-count" class="bg-white text-pink-600 text-xs font-black px-3 py-1 rounded-full shadow-sm">0 Urgentes</span>
+            </div>
+            <div id="contenedor-citas-prioritarias" class="grid grid-cols-1 md:grid-cols-2 gap-3 text-slate-800 text-xs max-h-72 overflow-y-auto pr-1">
+                <p class="text-white/80 text-xs py-2">No hay citas pendientes ni programadas para el día de hoy.</p>
+            </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-3xl shadow-sm border border-pink-100 space-y-5">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-100 pb-4">
+                <div>
+                    <h2 id="titulo-contabilidad-panel" class="font-black text-slate-900 text-base flex items-center gap-2">
+                        <i class="fa-solid fa-calculator text-pink-500"></i> Contabilidad, Impuestos & Comisiones
+                    </h2>
+                    <p class="text-xs text-slate-400">Resumen financiero claro, comisiones personalizadas y reportes detallados</p>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2 text-xs bg-pink-50/60 p-2 rounded-2xl border border-pink-100">
+                    <select id="exp-especialista-filtro" class="p-2 rounded-xl bg-white border border-slate-200 font-bold text-slate-700 outline-none">
+                        <option value="todos">Todos los Especialistas</option>
+                    </select>
+                    <select id="exp-periodo-filtro" class="p-2 rounded-xl bg-white border border-slate-200 font-bold text-slate-700 outline-none">
+                        <option value="dia">Hoy</option>
+                        <option value="semana">Esta Semana</option>
+                        <option value="mes" selected>Este Mes</option>
+                        <option value="historico">Todo el Historial</option>
+                    </select>
+                    <button onclick="generarExportacionPersonalizada('pdf')" class="px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl transition flex items-center gap-1 shadow-sm">
+                        <i class="fa-solid fa-file-pdf"></i> PDF
+                    </button>
+                    <button onclick="generarExportacionPersonalizada('csv')" class="px-3 py-2 bg-slate-700 hover:bg-slate-800 text-white font-bold rounded-xl transition flex items-center gap-1 shadow-sm">
+                        <i class="fa-solid fa-file-csv"></i> CSV (Columnas separadas)
+                    </button>
+                </div>
+            </div>
+
+            <div class="space-y-3">
+                <h3 class="font-bold text-xs uppercase tracking-wider text-slate-500">Resumen Financiero por Especialista</h3>
+                <div id="contenedor-reporte-especialistas" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    <p class="text-xs text-slate-400">Cargando contabilidad...</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <div class="space-y-4">
+                
+                <div id="bloque-contenedor-suscripcion" class="bg-gradient-to-br from-pink-50 via-white to-pink-100/60 p-5 rounded-3xl shadow-md border-2 border-pink-300 space-y-3 relative overflow-hidden">
+                    <div class="absolute -right-4 -top-4 w-20 h-20 bg-pink-500/10 rounded-full blur-xl pointer-events-none"></div>
+                    <div class="flex justify-between items-center">
+                        <button onclick="toggleAcordeon('sec-plan')" class="w-full flex justify-between items-center font-black text-slate-900 text-sm group">
+                            <span class="flex items-center gap-2 text-pink-700"><i class="fa-solid fa-crown text-pink-600 text-base animate-pulse"></i> Mi Plan & Suscripción Bonnyn</span>
+                            <i class="fa-solid fa-chevron-down text-pink-500 group-hover:scale-110 transition"></i>
+                        </button>
+                    </div>
+
+                    <div class="flex items-center justify-between gap-2 pt-1">
+                        <span class="text-xs text-slate-600 font-bold">Estado actual: <strong id="txt-plan-actual" class="text-pink-600 uppercase">Gratuito</strong></span>
+                        <button onclick="abrirModalInfoPlanes()" class="px-3 py-1.5 bg-white hover:bg-pink-600 hover:text-white text-pink-700 font-black rounded-xl text-[11px] border border-pink-300 transition shadow-sm flex items-center gap-1.5">
+                            <i class="fa-solid fa-circle-info"></i> Ver Detalles de Planes
+                        </button>
+                    </div>
+
+                    <div id="sec-plan" class="hidden space-y-3 pt-2 border-t border-pink-200 text-xs">
+                        <div class="bg-white/80 p-3 rounded-2xl border border-pink-200 space-y-1 shadow-inner">
+                            <p>Plan actual: <strong id="txt-plan-actual-det" class="text-pink-600 uppercase">Gratuito</strong></p>
+                            <p>Estado de cuenta: <strong id="txt-estado-cuenta" class="text-emerald-600">Activo</strong></p>
+                            <p>Vencimiento: <strong id="txt-vencimiento" class="text-slate-700">-</strong></p>
+                        </div>
+
+                        <div class="space-y-3 pt-1 border-t border-pink-200" id="seccion-reporte-pago-suscripcion">
+                            <p id="titulo-seccion-pago" class="font-bold text-slate-700"><i class="fa-solid fa-paper-plane text-pink-500"></i> Reportar Pago de Suscripción:</p>
+                            
+                            <div id="contenedor-selector-planes">
+                                <label class="block font-bold text-slate-700 mb-1">Selecciona tu Plan:</label>
+                                <select id="nuevo-plan-select" onchange="calcularMontoSuscripcion()" class="w-full p-2.5 border rounded-xl bg-white font-bold text-slate-800 shadow-sm">
+                                    <option value="profesional" data-precio="15.00">Plan Profesional ($15 / mes)</option>
+                                    <option value="elite" data-precio="29.00">Plan Elite ($29 / mes - Vitrina Destacada)</option>
+                                </select>
+                            </div>
+
+                            <div class="space-y-1.5">
+                                <label class="block font-bold text-slate-700">Método de Pago para la Suscripción:</label>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <button type="button" onclick="seleccionarMetodoSuscripcion('nacional')" id="btn-sus-nacional" class="p-2.5 rounded-xl border-2 border-pink-600 bg-pink-50 text-[11px] font-bold text-pink-700 transition text-left">
+                                        <i class="fa-solid fa-building-columns mr-1"></i> Pago Móvil / Local
+                                        <span class="block text-[9px] text-slate-500 font-normal">Sin comisiones (0%)</span>
+                                    </button>
+                                    <button type="button" onclick="seleccionarMetodoSuscripcion('internacional')" id="btn-sus-intl" class="p-2.5 rounded-xl border-2 border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-700 transition text-left">
+                                        <i class="fa-solid fa-globe mr-1"></i> Billeteras (Intl)
+                                        <span class="block text-[9px] text-slate-500 font-normal">Binance, Airtm, PayPal</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div id="contenedor-billeteras-intl" class="hidden p-3 rounded-xl bg-pink-50/70 border border-pink-200 space-y-2">
+                                <label class="block font-bold text-slate-700">Selecciona tu Pasarela Internacional:</label>
+                                <div class="grid grid-cols-3 gap-1.5 text-center">
+                                    <button type="button" onclick="seleccionarPasarelaIntl('binance', 0.0)" id="pas-binance" class="p-2 rounded-xl border-2 border-pink-600 bg-white text-[11px] font-bold text-slate-800 transition shadow-sm">
+                                        🟡 Binance<span class="block text-[9px] text-emerald-600 font-semibold">0% com.</span>
+                                    </button>
+                                    <button type="button" onclick="seleccionarPasarelaIntl('airtm', 0.01)" id="pas-airtm" class="p-2 rounded-xl border border-slate-200 bg-white text-[11px] font-semibold text-slate-600 transition">
+                                        🔵 Airtm<span class="block text-[9px] text-amber-600 font-semibold">+1% com.</span>
+                                    </button>
+                                    <button type="button" onclick="seleccionarPasarelaIntl('paypal', 0.04)" id="pas-paypal" class="p-2 rounded-xl border border-slate-200 bg-white text-[11px] font-semibold text-slate-600 transition">
+                                        🅿️ PayPal<span class="block text-[9px] text-rose-600 font-semibold">+4% com.</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div id="datos-pago-master-box" class="p-3 bg-white border border-slate-200 rounded-xl text-[11px] space-y-1 shadow-sm">
+                                <p class="font-bold text-slate-800"><i class="fa-solid fa-building-columns text-pink-600 mr-1"></i> <span id="master-titulo-metodo">Pago Móvil (Plataforma Master):</span></p>
+                                <p class="text-slate-600" id="master-detalles-1">Banco: Banco de Venezuela</p>
+                                <p class="text-slate-600" id="master-detalles-2">Cédula/RIF: V-15111111</p>
+                                <p class="text-slate-600" id="master-detalles-3">Teléfono: 04121111111</p>
+                            </div>
+
+                            <div class="bg-pink-100/70 p-3 rounded-xl border border-pink-300 text-center shadow-sm space-y-1">
+                                <span class="text-[10px] font-black text-pink-800 uppercase">Monto Exacto a Transferir (Con Comisión):</span>
+                                <p id="monto-suscripcion-bs" class="text-sm font-black text-pink-700">$15.00</p>
+                                <p id="detalle-comision-txt" class="text-[10px] text-slate-500 hidden"></p>
+                            </div>
+
+                            <div id="input-ref-container">
+                                <input type="text" id="ref-pago-suscripcion" maxlength="30" placeholder="Referencia de Pago o TXID *" class="w-full p-2.5 border rounded-xl bg-white font-semibold">
+                            </div>
+                            <button onclick="reportarPagoSuscripcion()" class="w-full bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-700 hover:to-rose-700 text-white font-black p-3 rounded-xl uppercase transition shadow-md tracking-wider">
+                                🚀 Enviar Reporte de Pago
+                            </button>
+                        </div>
+
+                        <div class="pt-2">
+                            <p class="font-bold text-slate-700 mb-1">Historial de Pagos de Suscripción</p>
+                            <div id="lista-historial-suscripcion" class="space-y-1.5 max-h-32 overflow-y-auto pr-1"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ========================================== -->
+                <!-- MÓDULO DE GASTOS Y LOGÍSTICA (PLAN ELITE)   -->
+                <!-- ========================================== -->
+                <div class="bg-white p-5 rounded-3xl shadow-sm border border-pink-100 space-y-3">
+                    <button onclick="toggleAcordeon('sec-gastos')" class="w-full flex justify-between items-center font-black text-slate-900 text-sm">
+                        <span class="flex items-center gap-2 text-pink-700"><i class="fa-solid fa-wallet text-pink-600"></i> Gastos & Insumos <span class="text-[10px] bg-pink-100 text-pink-700 px-2 py-0.5 rounded-full font-bold">Elite</span></span>
+                        <i class="fa-solid fa-chevron-down text-slate-400"></i>
+                    </button>
+                    <div id="sec-gastos" class="hidden space-y-3 pt-2 border-t border-slate-100 text-xs">
+                        <p class="text-slate-500">Registra compras de insumos, alquiler o logística para descontarlos automáticamente de tu balance neto:</p>
+                        
+                        <form onsubmit="registrarGastoLogistica(event)" class="space-y-2 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                            <div>
+                                <label class="block font-bold text-slate-700 mb-1">Categoría</label>
+                                <select id="gasto-categoria" class="w-full p-2.5 border rounded-xl bg-white font-bold text-slate-800">
+                                    <option value="Insumos">🧪 Insumos y Materiales</option>
+                                    <option value="Alquiler">🏠 Alquiler / Servicios</option>
+                                    <option value="Mantenimiento">🔧 Mantenimiento / Equipos</option>
+                                    <option value="Otros">📦 Otros Gastos</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block font-bold text-slate-700 mb-1">Detalle o Descripción *</label>
+                                <input type="text" id="gasto-detalle" required placeholder="Ej: Compra de Esmaltes y Gasas" class="w-full p-2.5 border rounded-xl bg-white font-semibold">
+                            </div>
+                            <div>
+                                <label class="block font-bold text-slate-700 mb-1">Monto en USD ($) *</label>
+                                <input type="number" step="0.01" id="gasto-monto" required placeholder="15.00" class="w-full p-2.5 border rounded-xl bg-white font-bold text-pink-600">
+                            </div>
+                            <button type="submit" class="w-full bg-pink-600 hover:bg-pink-700 text-white font-black p-2.5 rounded-xl uppercase transition shadow-sm tracking-wider">
+                                💸 Registrar Gasto
+                            </button>
+                        </form>
+
+                        <div class="pt-2">
+                            <p class="font-bold text-slate-700 mb-1">Historial de Gastos Registrados:</p>
+                            <div id="lista-gastos-logistica" class="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                                <p class="text-slate-400 italic">No hay gastos registrados.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ========================================== -->
+                <!-- MÓDULO: CONTROL DE INVENTARIO Y STOCK (PLAN ELITE) -->
+                <!-- ========================================== -->
+                <div class="bg-white p-5 rounded-3xl shadow-sm border border-pink-100 space-y-3">
+                    <button onclick="toggleAcordeon('sec-inventario')" class="w-full flex justify-between items-center font-black text-slate-900 text-sm">
+                        <span class="flex items-center gap-2 text-pink-700">
+                            <i class="fa-solid fa-boxes-stacked text-pink-600"></i> Control de Inventario & Stock 
+                            <span class="text-[10px] bg-pink-100 text-pink-700 px-2 py-0.5 rounded-full font-bold">Elite</span>
+                        </span>
+                        <i class="fa-solid fa-chevron-down text-slate-400"></i>
+                    </button>
+                    <div id="sec-inventario" class="hidden space-y-4 pt-2 border-t border-slate-100 text-xs">
+                        <p class="text-slate-500">Gestiona tus productos, insumos, stock mínimo y realiza ventas directas (Se descuentan automáticamente al completar citas):</p>
+                        
+                        <form onsubmit="crearProductoInsumo(event)" class="space-y-2 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                            <p class="font-bold text-slate-800">➕ Registrar Producto / Insumo</p>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block font-bold text-slate-700 mb-1">Nombre *</label>
+                                    <input type="text" id="inv-nombre" required placeholder="Ej: Esmaltes Semi / Gasas" class="w-full p-2.5 border rounded-xl bg-white font-semibold">
+                                </div>
+                                <div>
+                                    <label class="block font-bold text-slate-700 mb-1">Stock Actual *</label>
+                                    <input type="number" step="0.1" id="inv-stock" required value="10" class="w-full p-2.5 border rounded-xl bg-white font-bold">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                <div>
+                                    <label class="block font-bold text-slate-700 mb-1">Stock Mínimo</label>
+                                    <input type="number" step="0.1" id="inv-minimo" value="3" class="w-full p-2.5 border rounded-xl bg-white font-bold text-amber-600">
+                                </div>
+                                <div>
+                                    <label class="block font-bold text-slate-700 mb-1">Costo ($)</label>
+                                    <input type="number" step="0.01" id="inv-costo" value="0.00" class="w-full p-2.5 border rounded-xl bg-white font-bold">
+                                </div>
+                                <div>
+                                    <label class="block font-bold text-slate-700 mb-1">Precio Venta ($)</label>
+                                    <input type="number" step="0.01" id="inv-precio" value="0.00" class="w-full p-2.5 border rounded-xl bg-white font-bold text-pink-600">
+                                </div>
+                            </div>
+                            <button type="submit" class="w-full bg-pink-600 hover:bg-pink-700 text-white font-black p-2.5 rounded-xl uppercase transition shadow-sm tracking-wider">
+                                📦 Guardar Producto / Insumo
+                            </button>
+                        </form>
+
+                        <div class="bg-pink-50/70 p-3 rounded-2xl border border-pink-200 space-y-2">
+                            <p class="font-bold text-pink-900">⚡ Venta Directa de Producto</p>
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
+                                <div class="sm:col-span-2">
+                                    <label class="block font-bold text-slate-700 mb-1">Producto</label>
+                                    <select id="venta-dir-producto-id" class="w-full p-2 border rounded-xl bg-white font-semibold text-slate-800">
+                                        <option value="">Cargando productos...</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block font-bold text-slate-700 mb-1">Cantidad</label>
+                                    <input type="number" step="0.1" id="venta-dir-cantidad" value="1" min="1" class="w-full p-2 border rounded-xl bg-white font-bold">
+                                </div>
+                            </div>
+                            <button onclick="registrarVentaDirectaAdmin()" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-2 rounded-xl text-[11px] uppercase transition shadow-sm">
+                                🛍️ Registrar Venta y Descontar Stock
+                            </button>
+                        </div>
+
+                        <div class="pt-2">
+                            <div class="flex justify-between items-center mb-1">
+                                <p class="font-bold text-slate-700">Inventario Actual & Alertas:</p>
+                                <span id="badge-stock-alertas" class="bg-rose-100 text-rose-700 font-bold px-2 py-0.5 rounded-full text-[10px]">0 Alertas</span>
+                            </div>
+                            <div id="lista-inventario-admin" class="space-y-2 max-h-56 overflow-y-auto pr-1">
+                                <p class="text-slate-400 italic text-[11px]">Cargando inventario...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-3xl shadow-sm border border-pink-100 space-y-3">
+                    <button onclick="toggleAcordeon('sec-calendario')" class="w-full flex justify-between items-center font-black text-slate-900 text-sm">
+                        <span class="flex items-center gap-2"><i class="fa-solid fa-calendar-day text-pink-500"></i> Calendario & Conteo Diario</span>
+                        <i class="fa-solid fa-chevron-down text-slate-400"></i>
+                    </button>
+                    <div id="sec-calendario" class="space-y-3 pt-2 border-t border-slate-100 text-xs">
+                        <p class="text-slate-500">Selecciona una fecha para ver el total de citas confirmadas:</p>
+                        <input type="date" id="filtro-fecha-calendario" onchange="actualizarResumenCalendario()" class="w-full p-2.5 border rounded-2xl bg-slate-50 font-bold text-slate-800 outline-none">
+                        
+                        <div id="resumen-dia-calendario" class="p-3 bg-pink-50/70 border border-pink-200 rounded-2xl space-y-1.5">
+                            <div class="flex justify-between items-center font-bold">
+                                <span>Citas Confirmadas:</span>
+                                <span id="cant-citas-dia-confirmadas" class="text-emerald-700 font-black text-sm">0</span>
+                            </div>
+                            <div class="flex justify-between items-center font-bold">
+                                <span>Citas Pendientes:</span>
+                                <span id="cant-citas-dia-pendientes" class="text-amber-700 font-black text-sm">0</span>
+                            </div>
+                            <div id="detalle-citas-dia" class="pt-2 border-t border-pink-200 space-y-1 text-[11px] text-slate-700 max-h-40 overflow-y-auto pr-1"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-3xl shadow-sm border border-pink-100 space-y-3">
+                    <button onclick="toggleAcordeon('sec-bloqueo')" class="w-full flex justify-between items-center font-black text-slate-900 text-sm">
+                        <span class="flex items-center gap-2"><i class="fa-solid fa-ban text-rose-500"></i> Bloqueos, Reposos & Multas</span>
+                        <i class="fa-solid fa-chevron-down text-slate-400"></i>
+                    </button>
+                    <div id="sec-bloqueo" class="hidden space-y-3 pt-2 border-t border-slate-100 text-xs">
+                        <p class="text-slate-500">Bloquea el día completo del salón o un especialista específico en reposo o ausente:</p>
+                        
+                        <div class="space-y-2 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                            <div>
+                                <label class="block font-bold text-slate-700 mb-1">Fecha de Bloqueo *</label>
+                                <input type="date" id="input-fecha-bloqueo" class="w-full p-2.5 border rounded-xl bg-white font-bold text-slate-800 outline-none">
+                            </div>
+
+                            <div>
+                                <label class="block font-bold text-slate-700 mb-1">Afectado *</label>
+                                <select id="select-bloqueo-personal" onchange="toggleFormularioMultaEspecialista()" class="w-full p-2.5 border rounded-xl bg-white font-bold text-slate-800">
+                                    <option value="general">🏢 Todo el Salón (Feriado / Cierre General)</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block font-bold text-slate-700 mb-1">Motivo / Causa</label>
+                                <input type="text" id="input-motivo-bloqueo" placeholder="Ej: Vacaciones, Falta injustificada, Cita médica" class="w-full p-2.5 border rounded-xl bg-white">
+                            </div>
+
+                            <div id="bloque-opcion-multa" class="hidden pt-2 border-t border-slate-200 space-y-2">
+                                <label class="flex items-center gap-2 font-bold text-rose-700 cursor-pointer">
+                                    <input type="checkbox" id="chk-aplicar-multa" onchange="toggleInputMontoMulta()" class="w-4 h-4 text-rose-600 rounded">
+                                    <span>⚠️ ¿Aplicar Sanción / Multa Económica?</span>
+                                </label>
+
+                                <div id="contenedor-monto-multa" class="hidden space-y-1">
+                                    <label class="block font-bold text-slate-600">Monto de Multa (<span class="simbolo-moneda-local">$</span>)</label>
+                                    <input type="number" step="0.01" id="input-monto-multa" placeholder="Ej: 10.00" class="w-full p-2 border rounded-xl bg-white font-bold text-rose-600">
+                                </div>
+                            </div>
+
+                            <button onclick="bloquearDiaSeleccionado()" class="w-full bg-rose-600 hover:bg-rose-700 text-white font-black p-2.5 rounded-xl uppercase transition shadow-sm tracking-wider">
+                                🚫 Registrar Bloqueo / Incidencia
+                            </button>
+                        </div>
+
+                        <div class="pt-2">
+                            <p class="font-bold text-slate-700 mb-1">Días Bloqueados e Incidencias Registradas:</p>
+                            <div id="lista-dias-bloqueados" class="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                                <p class="text-slate-400 italic">No hay bloqueos activos.</p>
+                            </div>
+                        </div>
+
+                        <div class="pt-3 border-t border-slate-200 space-y-2">
+                            <p class="font-black text-slate-800 flex items-center justify-between">
+                                <span>⚖️ Multas a Especialistas</span>
+                                <span id="badge-total-multas-pendientes" class="bg-rose-100 text-rose-700 font-bold px-2 py-0.5 rounded-full text-[10px]">0 Pendientes</span>
+                            </p>
+                            <div id="lista-multas-especialistas" class="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                                <p class="text-slate-400 italic">No hay multas registradas.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-3xl shadow-sm border border-pink-100 space-y-3">
+                    <button onclick="toggleAcordeon('sec-pago')" class="w-full flex justify-between items-center font-black text-slate-900 text-sm">
+                        <span class="flex items-center gap-2"><i class="fa-solid fa-mobile-screen-button text-pink-500"></i> Configuración de Salón & Métodos de Pago</span>
+                        <i class="fa-solid fa-chevron-down text-slate-400"></i>
+                    </button>
+                    <div id="sec-pago" class="hidden space-y-3 pt-2 border-t border-slate-100 text-xs">
+                        <form onsubmit="actualizarPerfilNegocio(event)" class="space-y-2.5">
+                            <div><label class="block font-bold text-slate-600 mb-1">Nombre del Salón</label><input type="text" id="edit-nombre" required class="w-full p-2.5 border rounded-2xl bg-slate-50"></div>
+                            <div><label class="block font-bold text-slate-600 mb-1">WhatsApp</label><input type="text" id="edit-whatsapp" required class="w-full p-2.5 border rounded-2xl bg-slate-50"></div>
+                            
+                            <div class="p-3 bg-pink-50/70 rounded-2xl border border-pink-200 space-y-2">
+                                <label class="block font-bold text-pink-900">Logo del Salón (Redondo y Elegante)</label>
+                                <div class="flex items-center gap-3">
+                                    <div class="w-12 h-12 rounded-full border border-pink-300 overflow-hidden bg-white flex items-center justify-center shrink-0">
+                                        <img id="preview-logo-admin" src="" alt="Logo" class="w-full h-full object-cover hidden">
+                                        <i id="preview-logo-icon" class="fa-solid fa-store text-pink-500"></i>
+                                    </div>
+                                    <div class="flex-1 space-y-1">
+                                        <input type="file" id="input-subir-logo" accept="image/*" class="w-full text-[11px] text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-[11px] file:font-bold file:bg-pink-600 file:text-white hover:file:bg-pink-700 cursor-pointer">
+                                        <p class="text-[10px] text-slate-400">Sube una imagen cuadrada (PNG/JPG). Se optimizará automáticamente.</p>
+                                    </div>
+                                </div>
+                                <button type="button" onclick="subirLogoSalon()" class="w-full bg-pink-600 hover:bg-pink-700 text-white font-bold py-2 rounded-xl text-[11px] uppercase transition shadow-sm">
+                                    <i class="fa-solid fa-cloud-arrow-up mr-1"></i> Subir y Guardar Logo
+                                </button>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-2 bg-pink-50/50 p-3 rounded-2xl border border-pink-100">
+                                <div>
+                                    <span class="block font-bold text-slate-500 mb-0.5">País de Operación</span>
+                                    <span id="txt-pais-fijo" class="font-black text-pink-800 text-sm">🇻🇪 Venezuela</span>
+                                </div>
+                                <div>
+                                    <span class="block font-bold text-slate-500 mb-0.5">Moneda Base</span>
+                                    <span id="txt-moneda-fija" class="font-black text-pink-800 text-sm">USD ($)</span>
+                                </div>
+                            </div>
+
+                            <div><label class="block font-bold text-slate-600 mb-1">Dirección de la Tienda</label><input type="text" id="edit-direccion" placeholder="Ej: Av. Principal, Local 4" class="w-full p-2.5 border rounded-2xl bg-slate-50"></div>
+                            
+                            <div class="space-y-1.5 pt-1">
+                                <div class="flex justify-between items-center">
+                                    <label class="font-bold text-slate-600">Ubicación en el Mapa</label>
+                                    <button type="button" onclick="obtenerUbicacionActualAdmin()" class="px-2.5 py-1 bg-pink-100 hover:bg-pink-200 text-pink-700 font-bold rounded-xl text-[10px] transition"><i class="fa-solid fa-crosshairs mr-1"></i> Usar mi GPS</button>
+                                </div>
+                                <div id="mapa-admin"></div>
+                                <input type="hidden" id="edit-latitud">
+                                <input type="hidden" id="edit-longitud">
+                            </div>
+
+                            <div id="bloque-pago-venezuela-admin" class="space-y-2 pt-2 border-t">
+                                <p class="font-bold text-pink-800">Datos de Pago Móvil (Venezuela)</p>
+                                <div>
+                                    <label class="block font-bold text-slate-600 mb-1">Banco</label>
+                                    <select id="edit-banco" class="w-full p-2.5 border rounded-2xl bg-slate-50 font-bold text-slate-800 outline-none">
+                                        <option value="" disabled selected>Selecciona tu banco...</option>
+                                        <option value="0102 – Banco de Venezuela (BDV)">0102 – Banco de Venezuela (BDV)</option>
+                                        <option value="0105 – Banco Mercantil">0105 – Banco Mercantil</option>
+                                        <option value="0108 – BBVA Provincial">0108 – BBVA Provincial</option>
+                                        <option value="0134 – Banesco">0134 – Banesco</option>
+                                        <option value="0172 – Bancamiga Banco Universal">0172 – Bancamiga Banco Universal</option>
+                                        <option value="0174 – Banplus">0174 – Banplus</option>
+                                        <option value="0191 – Banco Nacional de Crédito (BNC)">0191 – Banco Nacional de Crédito (BNC)</option>
+                                    </select>
+                                </div>
+                                <div><label class="block font-bold text-slate-600 mb-1">Cédula o RIF</label><input type="text" id="edit-cedula" class="w-full p-2.5 border rounded-2xl bg-slate-50"></div>
+                                <div><label class="block font-bold text-slate-600 mb-1">Teléfono Pago Móvil</label><input type="text" id="edit-telpm" class="w-full p-2.5 border rounded-2xl bg-slate-50"></div>
+                            </div>
+
+                            <div id="bloque-pago-internacional-admin" class="space-y-2 pt-2 border-t hidden">
+                                <p id="titulo-pago-local-admin" class="font-bold text-pink-800">Datos de Pago Local (Internacional)</p>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="block font-bold text-slate-600 mb-1">Método / Billetera</label>
+                                        <input type="text" id="edit-metodo-nacional-tipo" placeholder="Ej: Yape / Nequi / CBU" class="w-full p-2.5 border rounded-2xl bg-slate-50">
+                                    </div>
+                                    <div>
+                                        <label class="block font-bold text-slate-600 mb-1">Banco / Entidad</label>
+                                        <input type="text" id="edit-banco-local" placeholder="Ej: BCP / Bancolombia" class="w-full p-2.5 border rounded-2xl bg-slate-50">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block font-bold text-slate-600 mb-1">Nº Cuenta / CBU / CLABE / Teléfono</label>
+                                    <input type="text" id="edit-cuenta-local" placeholder="Número de cuenta o celular" class="w-full p-2.5 border rounded-2xl bg-slate-50">
+                                </div>
+                                <div>
+                                    <label class="block font-bold text-slate-600 mb-1">Titular y Cédula / RUT / DNI</label>
+                                    <input type="text" id="edit-titular-local" placeholder="Nombre y Documento del Titular" class="w-full p-2.5 border rounded-2xl bg-slate-50">
+                                </div>
+                            </div>
+
+                            <div class="space-y-2 pt-2 border-t">
+                                <p class="font-bold text-pink-800"><i class="fa-solid fa-globe mr-1"></i> Billeteras Globales y Pasarelas Maestras</p>
+                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                    <div>
+                                        <label class="block font-bold text-slate-600 mb-1">Binance Pay ID</label>
+                                        <input type="text" id="edit-binance" placeholder="Tu Binance Pay ID" class="w-full p-2.5 border rounded-2xl bg-slate-50">
+                                    </div>
+                                    <div>
+                                        <label class="block font-bold text-slate-600 mb-1">Airtm Correo</label>
+                                        <input type="text" id="edit-airtm" placeholder="tucorreo@airtm.com" class="w-full p-2.5 border rounded-2xl bg-slate-50">
+                                    </div>
+                                    <div>
+                                        <label class="block font-bold text-slate-600 mb-1">PayPal Correo</label>
+                                        <input type="text" id="edit-paypal" placeholder="tucorreo@paypal.com" class="w-full p-2.5 border rounded-2xl bg-slate-50">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="space-y-2 pt-2 border-t">
+                                <label class="flex items-center gap-2 font-bold text-slate-700 cursor-pointer">
+                                    <input type="checkbox" id="chk-mostrar-intl" class="w-4 h-4 text-pink-600 rounded" checked>
+                                    <span>🌍 Mostrar Pasarelas Internacionales (Binance, Airtm, PayPal) en mi Portal de Reservas</span>
+                                </label>
+                                <p class="text-[10px] text-slate-400">Si desmarcas esta casilla, tus clientes solo verán los métodos de pago locales o nacionales de tu país.</p>
+                            </div>
+
+                            <button type="submit" class="w-full bg-pink-500 hover:bg-pink-600 text-white font-bold p-2.5 rounded-2xl transition uppercase">Guardar Cambios</button>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-3xl shadow-sm border border-pink-100 space-y-3">
+                    <button onclick="toggleAcordeonHorarios()" class="w-full flex justify-between items-center font-black text-slate-900 text-sm">
+                        <span class="flex items-center gap-2"><i class="fa-solid fa-clock text-pink-500"></i> Horarios de Atención Semanal</span>
+                        <i class="fa-solid fa-chevron-down text-slate-400"></i>
+                    </button>
+                    <div id="sec-horarios" class="hidden space-y-3 pt-2 border-t border-slate-100 text-xs">
+                        <div id="lista-horarios-admin" class="space-y-2 max-h-56 overflow-y-auto pr-1">
+                            <p class="text-xs text-slate-400 text-center py-2">Cargando días y turnos...</p>
+                        </div>
+                        <button onclick="guardarHorarios()" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold p-2.5 rounded-xl transition uppercase text-[11px] mt-2 shadow-sm">
+                            Guardar Horarios
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-3xl shadow-sm border border-pink-100 space-y-3">
+                    <button onclick="toggleAcordeon('sec-personal')" class="w-full flex justify-between items-center font-black text-slate-900 text-sm">
+                        <span class="flex items-center gap-2"><i class="fa-solid fa-users text-pink-500"></i> Especialistas (<span id="contador-personal-activos">0</span>)</span>
+                        <i class="fa-solid fa-chevron-down text-slate-400"></i>
+                    </button>
+                    <div id="sec-personal" class="hidden space-y-3 pt-2 border-t border-slate-100 text-xs">
+                        <form onsubmit="crearPersonal(event)" class="space-y-2">
+                            <input type="text" id="pers-nombre" required placeholder="Nombre de la Especialista" class="w-full p-2.5 border rounded-2xl">
+                            <select id="pers-especialidad" required class="w-full p-2.5 border rounded-2xl bg-white font-semibold text-slate-700">
+                                <option value="" disabled selected>Selecciona Especialidad</option>
+                                <option value="Uñas">💅 Uñas</option>
+                                <option value="Cejas y Pestañas">👁️ Cejas y Pestañas</option>
+                                <option value="Maquilladora Profesional">💄 Maquilladora Profesional</option>
+                                <option value="Barbería">✂️ Barbería</option>
+                                <option value="Cabello">💇‍♀️ Cabello</option>
+                                <option value="Esteticista Cosmética">🌿 Esteticista Cosmética</option>
+                                <option value="Especialista en Micropigmentación">✨ Especialista en Micropigmentación</option>
+                                <option value="Spa y Estética Corporal">🧴 Spa y Estética Corporal</option>
+                                <option value="Fisioterapeuta">🦴 Fisioterapeuta</option>
+                                <option value="Masajista / Quiromasajista">💆‍♂️ Masajista / Quiromasajista</option>
+                                <option value="Psicólogo / Terapeuta">🧠 Psicólogo / Terapeuta</option>
+                            </select>
+                            <div>
+                                <label class="block font-bold text-slate-600 mb-1">% Comisión Trabajador</label>
+                                <input type="number" id="pers-comision" value="50" min="0" max="100" required class="w-full p-2.5 border rounded-2xl bg-slate-50 font-bold">
+                            </div>
+                            <button type="submit" class="w-full bg-pink-500 hover:bg-pink-600 text-white font-bold p-2.5 rounded-2xl uppercase tracking-wider transition">Agregar Especialista 🚀</button>
+                        </form>
+                        <div id="lista-personal-admin" class="space-y-2 max-h-56 overflow-y-auto pr-1"></div>
+                    </div>
+                </div>
+
+                <div class="bg-white p-6 rounded-3xl shadow-sm border border-pink-100 space-y-4">
+                    <h2 class="font-black text-slate-900 text-sm flex items-center gap-2"><i class="fa-solid fa-scissors text-pink-500"></i> Servicios (<span id="contador-servicios-activos">0</span>)</h2>
+                    <form onsubmit="crearServicio(event)" class="space-y-3 text-xs">
+                        <div>
+                            <label class="block font-bold text-slate-600 mb-1">Categoría</label>
+                            <select id="srv-categoria" class="w-full p-2.5 border rounded-2xl bg-white font-semibold">
+                                <option value="1">Uñas</option>
+                                <option value="2">Cejas y Pestañas</option>
+                                <option value="3">Maquilladora Profesional</option>
+                                <option value="4">Barbería</option>
+                                <option value="5">Cabello</option>
+                                <option value="6">Esteticista Cosmética</option>
+                                <option value="7">Especialista en Micropigmentación</option>
+                                <option value="8">Spa y Estética Corporal</option>
+                                <option value="9">Fisioterapeuta</option>
+                                <option value="10">Masajista / Quiromasajista</option>
+                                <option value="11">Psicólogo / Terapeuta</option>
+                            </select>
+                        </div>
+                        <div><label class="block font-bold text-slate-600 mb-1">Nombre del Servicio</label><input type="text" id="srv-nombre" required placeholder="Ej: Manicura Semipermanente" class="w-full p-2.5 border rounded-2xl"></div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div><label class="block font-bold text-slate-600 mb-1">Duración (min)</label><input type="number" id="srv-duracion" required value="45" class="w-full p-2.5 border rounded-2xl"></div>
+                            <div><label class="block font-bold text-slate-600 mb-1">Precio ($)</label><input type="number" step="0.01" id="srv-precio" required placeholder="15.00" class="w-full p-2.5 border rounded-2xl"></div>
+                        </div>
+                        <button type="submit" class="w-full bg-pink-500 hover:bg-pink-600 text-white font-bold p-3 rounded-2xl transition uppercase">Agregar Servicio <i class="fa-solid fa-plus ml-1"></i></button>
+                    </form>
+                    <div class="pt-2 border-t border-slate-100">
+                        <p class="font-bold text-slate-700 mb-2">Mis Servicios Activos</p>
+                        <div id="lista-mis-servicios" class="space-y-2 max-h-56 overflow-y-auto pr-1"></div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="lg:col-span-2 space-y-6">
+                
+                <div id="seccion-modulo-clinico" class="hidden bg-white p-6 rounded-3xl shadow-sm border border-pink-100 space-y-4">
+                    <h2 class="font-black text-slate-900 text-sm flex items-center gap-2"><i class="fa-solid fa-notes-medical text-pink-500"></i> Fichas & Historial Clínico de Pacientes</h2>
+                    <p class="text-xs text-slate-500">Notas de evolución, diagnósticos y seguimiento médico/estético por paciente.</p>
+                    
+                    <form onsubmit="guardarNotaClinicaAdmin(event)" class="space-y-3 text-xs bg-pink-50/50 p-4 rounded-2xl border border-pink-100">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div>
+                                <label class="block font-bold text-slate-700 mb-1">WhatsApp del Paciente *</label>
+                                <input type="text" id="clinica-wsp" required placeholder="Ej: 04121234567" class="w-full p-2.5 bg-white border rounded-xl font-bold">
+                            </div>
+                            <div>
+                                <label class="block font-bold text-slate-700 mb-1">Nombre del Paciente *</label>
+                                <input type="text" id="clinica-nombre" required placeholder="Nombre Completo" class="w-full p-2.5 bg-white border rounded-xl font-bold">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block font-bold text-slate-700 mb-1">Diagnóstico, Evolución o Notas de Tratamiento *</label>
+                            <textarea id="clinica-notas" required rows="3" placeholder="Ej: Paciente presenta contractura en trapecio derecho. Se aplicó descarga muscular..." class="w-full p-2.5 bg-white border rounded-xl font-bold"></textarea>
+                        </div>
+                        <button type="submit" class="w-full bg-pink-600 hover:bg-pink-700 text-white font-bold p-2.5 rounded-xl uppercase transition">Guardar Ficha Clínica 📋</button>
+                    </form>
+
+                    <div id="lista-notas-clinicas" class="space-y-2 max-h-56 overflow-y-auto pr-1"></div>
+                </div>
+
+                <div class="bg-white p-6 rounded-3xl shadow-sm border border-pink-100 space-y-4">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                        <h2 class="font-black text-slate-900 text-sm flex items-center gap-2"><i class="fa-solid fa-calendar-days text-pink-500"></i> Historial General de Citas</h2>
+                        <div class="flex gap-1 bg-slate-50 p-1 rounded-2xl border text-[11px] font-bold">
+                            <button onclick="filtrarCitas('todas')" class="px-3 py-1.5 rounded-xl bg-white shadow-sm text-pink-600 filter-btn" data-filter="todas">Todas</button>
+                            <button onclick="filtrarCitas('pendiente')" class="px-3 py-1.5 rounded-xl text-slate-600 hover:text-slate-900 filter-btn" data-filter="pendiente">Pendientes</button>
+                            <button onclick="filtrarCitas('confirmada')" class="px-3 py-1.5 rounded-xl text-slate-600 hover:text-slate-900 filter-btn" data-filter="confirmada">Confirmadas (Hoy)</button>
+                            <button onclick="filtrarCitas('completada')" class="px-3 py-1.5 rounded-xl text-slate-600 hover:text-slate-900 filter-btn" data-filter="completada">Completadas (Hoy)</button>
+                        </div>
+                    </div>
+
+                    <div class="relative">
+                        <input type="text" id="buscador-citas-texto" onkeyup="paginaActual = 1; renderizarCitas()" placeholder="🔍 Buscar por nombre de clienta o referencia de pago..." class="w-full p-2.5 pl-4 border border-slate-200 rounded-2xl text-xs font-bold text-slate-800 outline-none focus:border-pink-500">
+                    </div>
+
+                    <div id="contenedor-citas" class="space-y-3 max-h-[500px] overflow-y-auto pr-1">
+                        <p class="text-xs text-slate-400 text-center py-6">Cargando citas...</p>
+                    </div>
+
+                    <div id="controles-paginacion" class="flex justify-between items-center pt-4 border-t border-slate-100 text-xs hidden">
+                        <button onclick="cambiarPagina(-1)" id="btn-prev" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 font-bold rounded-xl text-slate-700 transition disabled:opacity-40">⬅️ Anteriores</button>
+                        <span id="info-paginacion" class="font-bold text-slate-500">Página 1 de 1</span>
+                        <button onclick="cambiarPagina(1)" id="btn-next" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 font-bold rounded-xl text-slate-700 transition disabled:opacity-40">Siguientes ➡️</button>
+                    </div>
+                </div>
+
+                <div class="bg-white p-6 rounded-3xl shadow-sm border border-pink-100 space-y-3">
+                    <h2 class="font-black text-slate-900 text-sm flex items-center gap-2"><i class="fa-solid fa-address-book text-pink-500"></i> Mis Clientas Frecuentes (CRM)</h2>
+                    <div id="lista-crm" class="space-y-2 max-h-56 overflow-y-auto pr-1"></div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE INFORMACIÓN DETALLADA DE PLANES -->
+    <div id="modal-info-planes" class="hidden fixed inset-0 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div class="bg-white border border-pink-200 p-6 rounded-3xl w-full max-w-2xl shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center border-b border-pink-100 pb-3">
+                <h3 class="font-black text-slate-900 text-base flex items-center gap-2"><i class="fa-solid fa-crown text-pink-600"></i> Guía Completa de Planes & Funciones Bonnyn</h3>
+                <button type="button" onclick="cerrarModalInfoPlanes()" class="text-slate-400 hover:text-slate-700 text-xl font-bold"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            
+            <div class="space-y-4 text-xs text-slate-700">
+                <div class="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                    <div class="flex justify-between items-center">
+                        <h4 class="font-black text-slate-900 text-sm uppercase">🌱 Plan Gratuito</h4>
+                        <span class="px-2.5 py-1 bg-slate-200 text-slate-700 font-bold rounded-full text-[10px]">Actual / Básico</span>
+                    </div>
+                    <p class="text-slate-600">Ideal para salones que inician o desean automatizar sus reservas principales sin costo fijo mensual.</p>
+                    <ul class="list-disc list-inside space-y-1 text-slate-600 font-medium">
+                        <li>Hasta <strong>15 citas mensuales</strong> en línea para tus clientas.</li>
+                        <li>Gestión de <strong>1 sola especialista</strong> activa.</li>
+                        <li>Hasta <strong>3 servicios activos</strong> configurados.</li>
+                        <li>Enlace público de reservas personalizado.</li>
+                    </ul>
+                </div>
+
+                <div class="p-4 bg-pink-50/70 rounded-2xl border border-pink-200 space-y-2 shadow-sm">
+                    <div class="flex justify-between items-center">
+                        <h4 class="font-black text-pink-700 text-sm uppercase">⭐ Plan Profesional ($15 / mes)</h4>
+                        <span class="px-2.5 py-1 bg-pink-200 text-pink-800 font-bold rounded-full text-[10px]">Recomendado</span>
+                    </div>
+                    <p class="text-slate-600">Diseñado para salones en crecimiento que requieren mayor capacidad y control operativo.</p>
+                    <ul class="list-disc list-inside space-y-1 text-slate-600 font-medium">
+                        <li><strong>Citas ilimitadas</strong> mensuales en tu agenda online.</li>
+                        <li>Hasta <strong>3 especialistas activos</strong> con cálculo de comisiones e impuestos.</li>
+                        <li>Hasta <strong>8 servicios activos</strong> en tu menú de reservas.</li>
+                        <li>Función de <strong>Bloquear Días del Salón / Vacaciones</strong> habilitada.</li>
+                        <li>Reportes contables globales (PDF y CSV).</li>
+                    </ul>
+                </div>
+
+                <div class="p-4 bg-slate-900 border border-slate-800 text-white rounded-2xl space-y-2 shadow-xl">
+                    <div class="flex justify-between items-center">
+                        <h4 class="font-black text-pink-400 text-sm uppercase">👑 Plan Elite ($29 / mes)</h4>
+                        <span class="px-2.5 py-1 bg-pink-600 text-white font-black rounded-full text-[10px]">Máximo Rendimiento</span>
+                    </div>
+                    <p class="text-slate-300">Solución integral sin restricciones para salones líderes con alto volumen de trabajo.</p>
+                    <ul class="list-disc list-inside space-y-1 text-slate-200 font-medium">
+                        <li><strong>Especialistas y Servicios ilimitados</strong> en tu negocio.</li>
+                        <li><strong>Vitrina Destacada</strong> en la página principal (Landing Page).</li>
+                        <li><strong>Recordatorios Automáticos de WhatsApp</strong> avanzados (a las 2h y 30m).</li>
+                        <li><strong>Bloqueo Individual por Especialista</strong> y multas.</li>
+                        <li><strong>Control de Gastos e Insumos</strong> y contabilidad neta detallada.</li>
+                        <li><strong>Control Avanzado de Inventario & Stock</strong> con alertas de stock mínimo y descuento automático al completar citas.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="pt-2 border-t border-slate-100 text-center">
+                <button onclick="cerrarModalInfoPlanes()" class="px-6 py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl text-xs uppercase transition">Entendido, cerrar ventana</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="area-impresion-ticket" class="hidden p-6 bg-white text-slate-900 space-y-4 max-w-sm mx-auto font-mono text-xs border">
+        <div class="text-center border-b pb-2 space-y-1">
+            <h2 id="tkt-salon" class="font-bold text-sm uppercase">SALON</h2>
+            <p id="tkt-direccion" class="text-[10px]">Dirección</p>
+            <p id="tkt-fecha-emision" class="text-[10px]">Fecha Emisión: -</p>
+        </div>
+        <div class="space-y-1 border-b pb-2 text-[11px]">
+            <p><strong>CLIENTE:</strong> <span id="tkt-cliente"></span></p>
+            <p><strong>TELÉFONO:</strong> <span id="tkt-telefono"></span></p>
+            <p><strong>SERVICIO:</strong> <span id="tkt-servicio"></span></p>
+            <p><strong>ESPECIALISTA:</strong> <span id="tkt-especialista"></span></p>
+            <p><strong>FECHA CITA:</strong> <span id="tkt-fecha-cita"></span></p>
+        </div>
+        <div class="space-y-1 text-[11px]" id="tkt-bloque-financiero"></div>
+        <div class="text-center border-t pt-2 text-[9px] text-slate-500">
+            <p>Comprobante interno de control</p>
+            <p>Plataforma Bonnyn Admin</p>
+        </div>
+    </div>
+
+    <div id="modal-reprogramar" class="hidden fixed inset-0 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div class="bg-white border border-slate-200 p-6 rounded-3xl w-full max-w-sm shadow-2xl space-y-4">
+            <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                <h3 class="font-black text-slate-900 text-sm flex items-center gap-2"><i class="fa-solid fa-calendar-plus text-pink-600"></i> Reprogramar Cita</h3>
+                <button type="button" onclick="cerrarModalReprogramar()" class="text-slate-400 hover:text-slate-700 text-lg"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="space-y-3 text-xs">
+                <input type="hidden" id="repo-cita-id">
+                <div><label class="block font-bold text-slate-700 mb-1">Nueva Fecha</label><input type="date" id="repo-fecha" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 outline-none"></div>
+                <div><label class="block font-bold text-slate-700 mb-1">Nueva Hora</label><input type="time" id="repo-hora" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 outline-none"></div>
+                <button onclick="guardarReprogramacion()" class="w-full bg-pink-600 text-white font-bold p-3.5 rounded-xl uppercase text-xs shadow-md">Guardar Nueva Fecha</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-editar-servicio" class="hidden fixed inset-0 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div class="bg-white border border-slate-200 p-6 rounded-3xl w-full max-w-sm shadow-2xl space-y-4">
+            <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                <h3 class="font-black text-slate-900 text-sm flex items-center gap-2"><i class="fa-solid fa-pen-to-square text-pink-600"></i> Editar Servicio</h3>
+                <button type="button" onclick="cerrarModalEditarServicio()" class="text-slate-400 hover:text-slate-700 text-lg"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form onsubmit="guardarEdicionServicio(event)" class="space-y-3 text-xs">
+                <input type="hidden" id="edit-srv-id">
+                <div>
+                    <label class="block font-bold text-slate-600 mb-1">Categoría</label>
+                    <select id="edit-srv-categoria" class="w-full p-2.5 border rounded-2xl bg-white font-semibold">
+                        <option value="1">Uñas</option>
+                        <option value="2">Cejas y Pestañas</option>
+                        <option value="3">Maquilladora Profesional</option>
+                        <option value="4">Barbería</option>
+                        <option value="5">Cabello</option>
+                        <option value="6">Esteticista Cosmética</option>
+                        <option value="7">Especialista en Micropigmentación</option>
+                        <option value="8">Spa y Estética Corporal</option>
+                        <option value="9">Fisioterapeuta</option>
+                        <option value="10">Masajista / Quiromasajista</option>
+                        <option value="11">Psicólogo / Terapeuta</option>
+                    </select>
+                </div>
+                <div><label class="block font-bold text-slate-600 mb-1">Nombre del Servicio</label><input type="text" id="edit-srv-nombre" required class="w-full p-2.5 border rounded-2xl bg-slate-50 font-bold"></div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div><label class="block font-bold text-slate-600 mb-1">Duración (min)</label><input type="number" id="edit-srv-duracion" required class="w-full p-2.5 border rounded-2xl bg-slate-50 font-bold"></div>
+                    <div><label class="block font-bold text-slate-600 mb-1">Precio ($)</label><input type="number" step="0.01" id="edit-srv-precio" required class="w-full p-2.5 border rounded-2xl bg-slate-50 font-bold"></div>
+                </div>
+                <button type="submit" class="w-full bg-pink-600 hover:bg-pink-700 text-white font-bold p-3 rounded-2xl transition uppercase">Guardar Cambios</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script>
+        let profesionalId = localStorage.getItem('profesional_id');
+        let slugNegocio = localStorage.getItem('slug_negocio');
+        let citasGlobal = [];
+        let serviciosGlobal = [];
+        let personalGlobal = [];
+        let diasBloqueadosGlobal = [];
+        let multasEspecialistasGlobal = [];
+        let gastosGlobal = [];
+        let inventarioGlobal = [];
+        let filtroActual = 'todas';
+        let paginaActual = 1;
+        const porPagina = 10;
+        let tasaBcvGlobal = 889.26;
+        let esSuspendidoMulta = false;
+        let mapaAdmin = null;
+        let marcadorAdmin = null;
+        let totalPendientesAnterior = 0;
+        let datosNegocioGlobal = {};
+
+        let metodoSuscripcionActual = 'nacional';
+        let pasarelaIntlActual = 'binance';
+        let comisionSuscripcionActual = 0.0;
+        let configMasterGlobal = {};
+
+        const configPaises = {
+            VE: { nombreImpuesto: "IVA", tasaImpuesto: 16, monedaDefault: "USD", simboloDefault: "$", nombreLargo: "🇻🇪 Venezuela" },
+            CO: { nombreImpuesto: "IVA", tasaImpuesto: 19, monedaDefault: "COP", simboloDefault: "$", nombreLargo: "🇨🇴 Colombia" },
+            PE: { nombreImpuesto: "IGV", tasaImpuesto: 18, monedaDefault: "PEN", simboloDefault: "S/", nombreLargo: "🇵🇪 Perú" },
+            AR: { nombreImpuesto: "IVA", tasaImpuesto: 21, monedaDefault: "ARS", simboloDefault: "$", nombreLargo: "🇦🇷 Argentina" },
+            CL: { nombreImpuesto: "IVA", tasaImpuesto: 19, monedaDefault: "CLP", simboloDefault: "$", nombreLargo: "🇨🇱 Chile" },
+            EC: { nombreImpuesto: "IVA", tasaImpuesto: 15, monedaDefault: "USD", simboloDefault: "$", nombreLargo: "🇪🇨 Ecuador" },
+            PA: { nombreImpuesto: "ITBMS", tasaImpuesto: 7, monedaDefault: "USD", simboloDefault: "$", nombreLargo: "🇵🇦 Panamá" },
+            MX: { nombreImpuesto: "IVA", tasaImpuesto: 16, monedaDefault: "MXN", simboloDefault: "$", nombreLargo: "🇲🇽 México" },
+            US: { nombreImpuesto: "Sales Tax", tasaImpuesto: 0, monedaDefault: "USD", simboloDefault: "$", nombreLargo: "🇺🇸 EE.UU. / Internacional" }
+        };
+
+        if (!profesionalId) {
+            localStorage.setItem('profesional_id', '1');
+            profesionalId = '1';
+        }
+
+        function obtenerPlanActual() {
+            return (datosNegocioGlobal.plan || 'gratuito').toLowerCase();
+        }
+
+        function abrirModalInfoPlanes() {
+            document.getElementById('modal-info-planes').classList.remove('hidden');
+        }
+
+        function cerrarModalInfoPlanes() {
+            document.getElementById('modal-info-planes').classList.add('hidden');
+        }
+
+        function irAReportarPagoSuscripcion() {
+            let el = document.getElementById('sec-plan');
+            if (el && el.classList.contains('hidden')) {
+                toggleAcordeon('sec-plan');
+            }
+            let contenedorSuscripcion = document.getElementById('bloque-contenedor-suscripcion');
+            if (contenedorSuscripcion) {
+                contenedorSuscripcion.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+
+        function formatearFechaVE(fechaStr) {
+            if (!fechaStr) return '';
+            let partes = fechaStr.split(' ');
+            let fechaPartes = partes[0].split('-');
+            if (fechaPartes.length === 3) {
+                return `${fechaPartes[2]}/${fechaPartes[1]}/${fechaPartes[0]} ${partes.slice(1).join(' ')}`;
+            }
+            return fechaStr;
+        }
+
+        function toggleAcordeon(id) {
+            let el = document.getElementById(id);
+            if (el) {
+                el.classList.toggle('hidden');
+                if (id === 'sec-pago' && !el.classList.contains('hidden') && mapaAdmin) {
+                    setTimeout(() => { mapaAdmin.invalidateSize(); }, 200);
+                }
+            }
+        }
+
+        function toggleAcordeonHorarios() {
+            let el = document.getElementById('sec-horarios');
+            if (el) {
+                el.classList.toggle('hidden');
+                if (!el.classList.contains('hidden')) cargarHorariosAdmin();
+            }
+        }
+
+        async function cargarGastosLogistica() {
+            try {
+                let res = await fetch(`/api/profesional/${profesionalId}/gastos`);
+                if (res.ok) {
+                    gastosGlobal = await res.json();
+                    renderizarGastosLogistica();
+                }
+            } catch(e) { gastosGlobal = []; }
+        }
+
+        async function registrarGastoLogistica(event) {
+            event.preventDefault();
+            let plan = obtenerPlanActual();
+            if (plan !== 'elite') {
+                alert("🔒 El registro de gastos e insumos es una función exclusiva del Plan Elite ($29). Actualiza tu plan para disfrutar de esta herramienta.");
+                return;
+            }
+
+            let detalle = document.getElementById('gasto-detalle').value.trim();
+            let monto = parseFloat(document.getElementById('gasto-monto').value);
+            let categoria = document.getElementById('gasto-categoria').value;
+
+            if (!detalle || isNaN(monto) || monto <= 0) {
+                alert("Por favor ingresa un detalle válido y un monto mayor a 0.");
+                return;
+            }
+
+            let payload = {
+                profesional_id: parseInt(profesionalId),
+                monto_usd: monto,
+                detalle: detalle,
+                categoria: categoria
+            };
+
+            try {
+                let res = await fetch('/api/profesional/gastos', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (res.ok) {
+                    alert("¡Gasto registrado con éxito en tu contabilidad!");
+                    document.getElementById('gasto-detalle').value = '';
+                    document.getElementById('gasto-monto').value = '';
+                    cargarGastosLogistica();
+                } else {
+                    let err = await res.json();
+                    alert(err.detail || "Error al registrar el gasto.");
+                }
+            } catch(e) {
+                alert("Error de conexión al registrar el gasto.");
+            }
+        }
+
+        function renderizarGastosLogistica() {
+            const contenedor = document.getElementById('lista-gastos-logistica');
+            if (!contenedor) return;
+            contenedor.innerHTML = '';
+
+            if (gastosGlobal.length === 0) {
+                contenedor.innerHTML = '<p class="text-slate-400 italic text-[11px]">No hay gastos registrados.</p>';
+                return;
+            }
+
+            let sim = datosNegocioGlobal.simbolo_moneda || '$';
+
+            gastosGlobal.forEach(g => {
+                let div = document.createElement('div');
+                div.className = "flex justify-between items-center p-2 bg-slate-50 border rounded-xl text-xs";
+                div.innerHTML = `
+                    <div>
+                        <p class="font-bold text-slate-800">[${g.categoria}] ${g.detalle}</p>
+                        <p class="text-[10px] text-slate-500">${g.fecha}</p>
+                    </div>
+                    <span class="font-black text-rose-600">-${sim}${g.monto_usd.toFixed(2)}</span>
+                `;
+                contenedor.appendChild(div);
+            });
+        }
+
+        async function cargarInventario() {
+            let plan = obtenerPlanActual();
+            if (plan !== 'elite') return;
+
+            try {
+                let res = await fetch(`/api/profesional/${profesionalId}/inventario`);
+                if (res.ok) {
+                    inventarioGlobal = await res.json();
+                    renderizarInventario();
+                }
+            } catch(e) { inventarioGlobal = []; }
+        }
+
+        async function crearProductoInsumo(event) {
+            event.preventDefault();
+            let plan = obtenerPlanActual();
+            if (plan !== 'elite') {
+                alert("🔒 El control avanzado de inventario y stock es exclusivo del Plan Elite ($29). Actualiza tu plan.");
+                return;
+            }
+
+            let nombre = document.getElementById('inv-nombre').value.trim();
+            let stockActual = parseFloat(document.getElementById('inv-stock').value);
+            let stockMinimo = parseFloat(document.getElementById('inv-minimo').value);
+            let costo = parseFloat(document.getElementById('inv-costo').value);
+            let precioVenta = parseFloat(document.getElementById('inv-precio').value);
+
+            if (!nombre || isNaN(stockActual)) {
+                alert("Completa los campos obligatorios del producto.");
+                return;
+            }
+
+            let payload = {
+                profesional_id: parseInt(profesionalId),
+                nombre: nombre,
+                stock_actual: stockActual,
+                stock_minimo: stockMinimo,
+                costo: costo,
+                precio_venta: precioVenta
+            };
+
+            let res = await fetch('/api/inventario/productos', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (res.ok) {
+                alert("¡Producto o insumo registrado con éxito!");
+                document.getElementById('inv-nombre').value = '';
+                document.getElementById('inv-stock').value = '10';
+                document.getElementById('inv-minimo').value = '3';
+                document.getElementById('inv-costo').value = '0.00';
+                document.getElementById('inv-precio').value = '0.00';
+                cargarInventario();
+            } else {
+                let err = await res.json();
+                alert(err.detail || "Error al registrar producto.");
+            }
+        }
+
+        async function eliminarProductoId(id) {
+            if (confirm("¿Estás seguro de eliminar este producto/insumo del inventario?")) {
+                let res = await fetch(`/api/inventario/productos/${id}`, { method: 'DELETE' });
+                if (res.ok) {
+                    cargarInventario();
+                }
+            }
+        }
+
+        async function registrarVentaDirectaAdmin() {
+            let productoId = document.getElementById('venta-dir-producto-id').value;
+            let cantidad = parseFloat(document.getElementById('venta-dir-cantidad').value);
+
+            if (!productoId || isNaN(cantidad) || cantidad <= 0) {
+                alert("Selecciona un producto y una cantidad válida.");
+                return;
+            }
+
+            let res = await fetch('/api/inventario/venta-directa', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ producto_id: parseInt(productoId), cantidad: cantidad })
+            });
+
+            if (res.ok) {
+                alert("¡Venta directa registrada y stock descontado con éxito!");
+                document.getElementById('venta-dir-cantidad').value = '1';
+                cargarInventario();
+            } else {
+                let err = await res.json();
+                alert(err.detail || "Error al registrar la venta directa.");
+            }
+        }
+
+        function renderizarInventario() {
+            const contenedor = document.getElementById('lista-inventario-admin');
+            const selectVentaDir = document.getElementById('venta-dir-producto-id');
+            const badgeAlertas = document.getElementById('badge-stock-alertas');
+            if (!contenedor) return;
+
+            contenedor.innerHTML = '';
+            if (selectVentaDir) selectVentaDir.innerHTML = '';
+
+            let alertasCount = 0;
+
+            if (inventarioGlobal.length === 0) {
+                contenedor.innerHTML = '<p class="text-slate-400 italic text-[11px]">No hay productos o insumos registrados.</p>';
+                if (selectVentaDir) selectVentaDir.innerHTML = '<option value="">No hay productos disponibles</option>';
+                if (badgeAlertas) badgeAlertas.innerText = '0 Alertas';
+                return;
+            }
+
+            let sim = datosNegocioGlobal.simbolo_moneda || '$';
+
+            inventarioGlobal.forEach(p => {
+                let stockBajo = p.stock_actual <= p.stock_minimo;
+                if (stockBajo) alertasCount++;
+
+                let badgeStockColor = stockBajo ? 'bg-rose-100 text-rose-700 animate-pulse' : 'bg-emerald-100 text-emerald-700';
+
+                let div = document.createElement('div');
+                div.className = "flex justify-between items-center p-2.5 bg-slate-50 border rounded-xl text-xs";
+                div.innerHTML = `
+                    <div>
+                        <p class="font-bold text-slate-900">${p.nombre}</p>
+                        <p class="text-[10px] text-slate-500">Costo: ${sim}${p.costo.toFixed(2)} | Venta: ${sim}${p.precio_venta.toFixed(2)} | Mín: ${p.stock_minimo}</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="px-2 py-1 rounded-lg font-black text-[11px] ${badgeStockColor}">Stock: ${p.stock_actual}</span>
+                        <button onclick="eliminarProductoId(${p.id})" class="text-rose-500 hover:text-rose-700 px-1"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                `;
+                contenedor.appendChild(div);
+
+                if (selectVentaDir && p.stock_actual > 0) {
+                    let opt = document.createElement('option');
+                    opt.value = p.id;
+                    opt.innerText = `${p.nombre} (Stock: ${p.stock_actual})`;
+                    selectVentaDir.appendChild(opt);
+                }
+            });
+
+            if (badgeAlertas) {
+                badgeAlertas.innerText = `${alertasCount} Alertas de Stock`;
+                if (alertasCount > 0) {
+                    badgeAlertas.className = "bg-rose-600 text-white font-bold px-2 py-0.5 rounded-full text-[10px] animate-bounce";
+                } else {
+                    badgeAlertas.className = "bg-emerald-100 text-emerald-700 font-bold px-2 py-0.5 rounded-full text-[10px]";
+                }
+            }
+        }
+
+        function seleccionarMetodoSuscripcion(tipo) {
+            metodoSuscripcionActual = tipo;
+            const btnNac = document.getElementById('btn-sus-nacional');
+            const btnIntl = document.getElementById('btn-sus-intl');
+            const contenedorIntl = document.getElementById('contenedor-billeteras-intl');
+
+            if (tipo === 'nacional') {
+                btnNac.className = "p-2.5 rounded-xl border-2 border-pink-600 bg-pink-50 text-[11px] font-bold text-pink-700 transition text-left";
+                btnIntl.className = "p-2.5 rounded-xl border-2 border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-700 transition text-left";
+                contenedorIntl.classList.add('hidden');
+                comisionSuscripcionActual = 0.0;
+                actualizarCajaMaster('nacional');
+            } else {
+                btnIntl.className = "p-2.5 rounded-xl border-2 border-pink-600 bg-pink-50 text-[11px] font-bold text-pink-700 transition text-left";
+                btnNac.className = "p-2.5 rounded-xl border-2 border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-700 transition text-left";
+                contenedorIntl.classList.remove('hidden');
+                seleccionarPasarelaIntl('binance', 0.0);
+            }
+            calcularMontoSuscripcion();
+        }
+
+        function seleccionarPasarelaIntl(pasarela, comision) {
+            pasarelaIntlActual = pasarela;
+            comisionSuscripcionActual = comision;
+
+            ['binance', 'airtm', 'paypal'].forEach(p => {
+                let btn = document.getElementById(`pas-${p}`);
+                if (p === pasarela) {
+                    btn.className = "p-2 rounded-xl border-2 border-pink-600 bg-white text-[11px] font-bold text-slate-800 transition shadow-sm";
+                } else {
+                    btn.className = "p-2 rounded-xl border border-slate-200 bg-white text-[11px] font-semibold text-slate-600 transition";
+                }
+            });
+
+            actualizarCajaMaster(pasarela);
+            calcularMontoSuscripcion();
+        }
+
+        function actualizarCajaMaster(clave) {
+            const masterBox = document.getElementById('datos-pago-master-box');
+            if (!masterBox) return;
+
+            let conf = configMasterGlobal || {};
+            let html = '';
+
+            if (clave === 'nacional' || esSuspendidoMulta) {
+                html = `
+                    <p class="font-bold text-slate-800"><i class="fa-solid fa-building-columns text-pink-600 mr-1"></i> Pago Móvil (Plataforma Master):</p>
+                    <p class="text-slate-600">Banco: <strong>${conf.banco || 'Banco de Venezuela'}</strong></p>
+                    <p class="text-slate-600">Cédula/RIF: <strong>${conf.cedula_rif || 'V-15111111'}</strong></p>
+                    <p class="text-slate-600">Teléfono: <strong>${conf.telefono || '04121111111'}</strong></p>
+                `;
+            } else if (clave === 'binance') {
+                html = `
+                    <p class="font-bold text-slate-800"><i class="fa-solid fa-globe text-sky-600 mr-1"></i> Binance Pay (Plataforma Master):</p>
+                    <p class="text-slate-600">Binance Pay ID: <strong>${conf.binance_pay_id || '987654321'}</strong></p>
+                    <p class="text-slate-600 text-emerald-600 font-bold">✓ Sin comisiones (0%)</p>
+                `;
+            } else if (clave === 'airtm') {
+                html = `
+                    <p class="font-bold text-slate-800"><i class="fa-solid fa-globe text-sky-600 mr-1"></i> Airtm (Plataforma Master):</p>
+                    <p class="text-slate-600">Correo Airtm: <strong>${conf.airtm_correo || 'bonnynsoporte@gmail.com'}</strong></p>
+                    <p class="text-slate-600 text-amber-600 font-bold">⚠️ Incluye +1% de comisión por pasarela</p>
+                `;
+            } else if (clave === 'paypal') {
+                html = `
+                    <p class="font-bold text-slate-800"><i class="fa-solid fa-globe text-sky-600 mr-1"></i> PayPal (Plataforma Master):</p>
+                    <p class="text-slate-600">Correo PayPal: <strong>${conf.paypal_correo || 'bonnynsoporte@gmail.com'}</strong></p>
+                    <p class="text-slate-600 text-rose-600 font-bold">⚠️ Incluye +4% de comisión por pasarela</p>
+                `;
+            }
+            masterBox.innerHTML = html;
+        }
+
+        function calcularMontoSuscripcion() {
+            let precioBase = 15.0;
+            if (esSuspendidoMulta) {
+                precioBase = 5.0;
+            } else {
+                const selectPlan = document.getElementById('nuevo-plan-select');
+                if (selectPlan && selectPlan.options[selectPlan.selectedIndex]) {
+                    precioBase = parseFloat(selectPlan.options[selectPlan.selectedIndex].getAttribute('data-precio')) || 15.0;
+                }
+            }
+
+            let precioFinalUsd = precioBase * (1 + comisionSuscripcionActual);
+            let pais = datosNegocioGlobal.pais || 'VE';
+            let txtComision = document.getElementById('detalle-comision-txt');
+
+            if (comisionSuscripcionActual > 0) {
+                txtComision.innerText = `Incluye ${(comisionSuscripcionActual * 100)}% de recargo por la pasarela seleccionada`;
+                txtComision.classList.remove('hidden');
+            } else {
+                txtComision.classList.add('hidden');
+            }
+
+            if (pais === 'VE') {
+                let bs = precioFinalUsd * tasaBcvGlobal;
+                document.getElementById('monto-suscripcion-bs').innerText = `$${precioFinalUsd.toFixed(2)} (Bs. ${bs.toLocaleString('es-VE', {minimumFractionDigits: 2, maximumFractionDigits: 2})})`;
+            } else {
+                document.getElementById('monto-suscripcion-bs').innerText = `$${precioFinalUsd.toFixed(2)} ${datosNegocioGlobal.moneda || 'USD'}`;
+            }
+        }
+
+        async function cargarPanelAdmin() {
+            try {
+                let resTasa = await fetch('/api/tasa-bcv');
+                let dataTasa = await resTasa.json();
+                tasaBcvGlobal = dataTasa.tasa;
+
+                let resProf = await fetch(`/api/profesional/${profesionalId}`);
+                if (!resProf.ok) {
+                    localStorage.setItem('profesional_id', '1');
+                    profesionalId = '1';
+                    resProf = await fetch(`/api/profesional/1`);
+                }
+                datosNegocioGlobal = await resProf.json();
+                
+                slugNegocio = datosNegocioGlobal.slug || datosNegocioGlobal.nombre_negocio.toLowerCase().replace(/[^a-z0-9]/g, '');
+                localStorage.setItem('slug_negocio', slugNegocio);
+
+                document.getElementById('link-publico-reserva').href = `${window.location.origin}/reserva/${slugNegocio}`;
+                document.getElementById('input-enlace-reserva').value = `${window.location.origin}/reserva/${slugNegocio}`;
+
+                document.getElementById('nombre-negocio-header').innerText = datosNegocioGlobal.nombre_negocio;
+                document.getElementById('edit-nombre').value = datosNegocioGlobal.nombre_negocio;
+                document.getElementById('edit-whatsapp').value = datosNegocioGlobal.telefono_whatsapp;
+                document.getElementById('edit-direccion').value = datosNegocioGlobal.direccion || '';
+                
+                const headerLogo = document.getElementById('header-logo');
+                const headerLogoDef = document.getElementById('header-logo-default');
+                const previewLogo = document.getElementById('preview-logo-admin');
+                const previewIcon = document.getElementById('preview-logo-icon');
+
+                if (datosNegocioGlobal.logo_url) {
+                    headerLogo.src = datosNegocioGlobal.logo_url;
+                    headerLogo.classList.remove('hidden');
+                    headerLogoDef.classList.add('hidden');
+
+                    previewLogo.src = datosNegocioGlobal.logo_url;
+                    previewLogo.classList.remove('hidden');
+                    previewIcon.classList.add('hidden');
+                } else {
+                    headerLogo.classList.add('hidden');
+                    headerLogoDef.classList.remove('hidden');
+
+                    previewLogo.classList.add('hidden');
+                    previewIcon.classList.remove('hidden');
+                }
+                
+                let paisActual = datosNegocioGlobal.pais || 'VE';
+                let monedaActual = datosNegocioGlobal.moneda || 'USD';
+                let infoPaisConfig = configPaises[paisActual] || configPaises['VE'];
+
+                document.getElementById('txt-pais-fijo').innerText = infoPaisConfig.nombreLargo;
+                document.getElementById('txt-moneda-fija').innerText = `${monedaActual} (${datosNegocioGlobal.simbolo_moneda || '$'})`;
+
+                let badgePais = document.getElementById('badge-pais-moneda');
+                badgePais.innerText = `🌍 ${paisActual} / ${monedaActual}`;
+
+                document.querySelectorAll('.simbolo-moneda-local').forEach(el => {
+                    el.innerText = datosNegocioGlobal.simbolo_moneda || '$';
+                });
+
+                let latInicial = datosNegocioGlobal.latitud || 10.4534;
+                let lngInicial = datosNegocioGlobal.longitud || -64.1705;
+                document.getElementById('edit-latitud').value = latInicial;
+                document.getElementById('edit-longitud').value = lngInicial;
+
+                document.getElementById('edit-banco').value = datosNegocioGlobal.banco || '';
+                document.getElementById('edit-cedula').value = datosNegocioGlobal.cedula_rif || '';
+                document.getElementById('edit-telpm').value = datosNegocioGlobal.telefono_pago_movil || '';
+
+                document.getElementById('edit-metodo-nacional-tipo').value = datosNegocioGlobal.metodo_pago_nacional_tipo || '';
+                document.getElementById('edit-banco-local').value = datosNegocioGlobal.banco_local || '';
+                document.getElementById('edit-cuenta-local').value = datosNegocioGlobal.numero_cuenta_local || '';
+                document.getElementById('edit-titular-local').value = datosNegocioGlobal.titular_cuenta_local || '';
+                document.getElementById('edit-binance').value = datosNegocioGlobal.binance_pay_id || '';
+                document.getElementById('edit-airtm').value = datosNegocioGlobal.airtm_correo || '';
+                document.getElementById('edit-paypal').value = datosNegocioGlobal.paypal_correo || '';
+
+                if(document.getElementById('chk-mostrar-intl')) {
+                    document.getElementById('chk-mostrar-intl').checked = datosNegocioGlobal.mostrar_pagos_internacionales !== false;
+                }
+
+                let hoyStr = new Date().toISOString().split('T')[0];
+                document.getElementById('filtro-fecha-calendario').value = hoyStr;
+                document.getElementById('input-fecha-bloqueo').value = hoyStr;
+
+                inicializarMapaAdmin(latInicial, lngInicial);
+
+                document.getElementById('titulo-contabilidad-panel').innerHTML = `<i class="fa-solid fa-calculator text-pink-500"></i> Contabilidad, ${infoPaisConfig.nombreImpuesto} (${infoPaisConfig.tasaImpuesto}%) & Comisiones`;
+
+                document.getElementById('txt-plan-actual').innerText = datosNegocioGlobal.plan || 'Gratuito';
+                document.getElementById('txt-plan-actual-det').innerText = datosNegocioGlobal.plan || 'Gratuito';
+                document.getElementById('txt-estado-cuenta').innerText = datosNegocioGlobal.estado_cuenta || 'Activo';
+                document.getElementById('txt-vencimiento').innerText = datosNegocioGlobal.fecha_vencimiento || 'Sin límite';
+
+                try {
+                    let resConf = await fetch('/api/configuracion-pago');
+                    configMasterGlobal = await resConf.json();
+                } catch(e) {}
+
+                if (datosNegocioGlobal.plan === 'suspendido_multa' || datosNegocioGlobal.estado_cuenta === 'baneado') {
+                    esSuspendidoMulta = true;
+                    document.getElementById('alerta-suspension').classList.remove('hidden');
+                    document.getElementById('titulo-seccion-pago').innerHTML = `<i class="fa-solid fa-triangle-exclamation text-rose-500"></i> Reportar Multa de Reactivación ($5.00):`;
+                    document.getElementById('contenedor-selector-planes').innerHTML = `<div class="p-2.5 bg-rose-50 border border-rose-200 rounded-xl font-bold text-rose-700 text-center">Multa Administrativa Obligatoria de Reactivación ($5.00)</div>`;
+                } else {
+                    esSuspendidoMulta = false;
+                    document.getElementById('alerta-suspension').classList.add('hidden');
+                    document.getElementById('titulo-seccion-pago').innerHTML = `<i class="fa-solid fa-paper-plane text-pink-500"></i> Reportar Pago de Suscripción:`;
+                }
+
+                actualizarCajaMaster('nacional');
+                calcularMontoSuscripcion();
+                cargarServiciosAdmin();
+                cargarPersonalAdmin();
+                cargarHorariosAdmin();
+                cargarHistorialSuscripcion();
+                cargarDiasBloqueados();
+                cargarMultasEspecialistas();
+                cargarGastosLogistica();
+                cargarInventario();
+                await cargarCitasAdmin();
+
+                let nombreNegocioLC = (datosNegocioGlobal.nombre_negocio || "").toLowerCase();
+                let serviciosNombres = serviciosGlobal.map(s => s.nombre.toLowerCase()).join(" ");
+                if (
+                    serviciosNombres.includes('fisioterapia') || serviciosNombres.includes('masaje') || 
+                    serviciosNombres.includes('psicolog') || serviciosNombres.includes('terapia') || 
+                    serviciosNombres.includes('facial') || serviciosNombres.includes('micropigmentacion') ||
+                    nombreNegocioLC.includes('fisio') || nombreNegocioLC.includes('clinica') || nombreNegocioLC.includes('spa')
+                ) {
+                    document.getElementById('seccion-modulo-clinico').classList.remove('hidden');
+                    cargarNotasClinicasAdmin();
+                } else {
+                    document.getElementById('seccion-modulo-clinico').classList.add('hidden');
+                }
+
+                setInterval(monitorearCitasNuevas, 10000);
+
+            } catch(e) { console.error("Error al cargar el panel:", e); }
+        }
+
+        async function subirLogoSalon() {
+            const fileInput = document.getElementById('input-subir-logo');
+            if (!fileInput.files || fileInput.files.length === 0) {
+                alert("Por favor selecciona una imagen para el logo.");
+                return;
+            }
+
+            let formData = new FormData();
+            formData.append("file", fileInput.files[0]);
+
+            try {
+                let res = await fetch(`/api/profesional/${profesionalId}/logo`, {
+                    method: 'POST',
+                    body: formData
+                });
+                let data = await res.json();
+                if (res.ok) {
+                    alert("¡Logo actualizado con éxito!");
+                    cargarPanelAdmin();
+                } else {
+                    alert(data.detail || "Error al subir el logo.");
+                }
+            } catch(e) {
+                alert("Error de conexión al subir el logo.");
+            }
+        }
+
+        async function cargarNotasClinicasAdmin() {
+            try {
+                let res = await fetch(`/api/notas-clinicas/${profesionalId}`);
+                let notas = await res.json();
+                const contenedor = document.getElementById('lista-notas-clinicas');
+                if (!contenedor) return;
+                contenedor.innerHTML = '';
+                if (notas.length === 0) {
+                    contenedor.innerHTML = '<p class="text-xs text-slate-400 italic">No hay fichas clínicas registradas.</p>';
+                    return;
+                }
+                notas.forEach(n => {
+                    let div = document.createElement('div');
+                    div.className = "p-3 bg-white rounded-2xl border border-slate-200 space-y-1 text-xs shadow-sm";
+                    div.innerHTML = `
+                        <div class="flex justify-between items-center"><strong class="text-slate-900">${n.nombre_clienta}</strong><span class="text-[10px] text-pink-600 font-bold">📱 ${n.whatsapp_clienta}</span></div>
+                        <p class="text-slate-600 bg-slate-50 p-2 rounded-xl text-[11px]">${n.diagnostico_notas}</p>
+                        <p class="text-[9px] text-slate-400 text-right">Actualizado: ${n.fecha_actualizacion}</p>
+                    `;
+                    contenedor.appendChild(div);
+                });
+            } catch(e) {}
+        }
+
+        async function guardarNotaClinicaAdmin(event) {
+            event.preventDefault();
+            let datos = {
+                profesional_id: parseInt(profesionalId),
+                whatsapp_clienta: document.getElementById('clinica-wsp').value.trim(),
+                nombre_clienta: document.getElementById('clinica-nombre').value.trim(),
+                diagnostico_notas: document.getElementById('clinica-notas').value.trim()
+            };
+            let res = await fetch('/api/notas-clinicas/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(datos)
+            });
+            if (res.ok) {
+                alert("¡Ficha clínica guardada con éxito!");
+                document.getElementById('clinica-wsp').value = '';
+                document.getElementById('clinica-nombre').value = '';
+                document.getElementById('clinica-notas').value = '';
+                cargarNotasClinicasAdmin();
+            }
+        }
+
+        async function monitorearCitasNuevas() {
+            try {
+                let res = await fetch(`/api/citas/?profesional_id=${profesionalId}`);
+                let citas = await res.json();
+                let pendientesActuales = citas.filter(c => c.estado === 'pendiente').length;
+
+                if (pendientesActuales > totalPendientesAnterior && totalPendientesAnterior !== 0) {
+                    reproducirSonidoAlerta();
+                }
+                totalPendientesAnterior = pendientesActuales;
+
+                if (JSON.stringify(citas) !== JSON.stringify(citasGlobal)) {
+                    citasGlobal = citas;
+                    citasGlobal.sort((a, b) => new Date(b.fecha_hora_inicio) - new Date(a.fecha_hora_inicio));
+                    renderizarCitasPrioritarias();
+                    actualizarResumenCalendario();
+                    renderizarCitas();
+                    calcularIngresos(citasGlobal);
+                    generarCRM(citasGlobal);
+                    actualizarContabilidadEspecialistas();
+                    cargarInventario(); 
+                }
+            } catch(e) {}
+        }
+
+        function reproducirSonidoAlerta() {
+            try {
+                let ctx = new (window.AudioContext || window.webkitAudioContext)();
+                let osc = ctx.createOscillator();
+                let gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+                gain.gain.setValueAtTime(0.1, ctx.currentTime);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start();
+                osc.stop(ctx.currentTime + 0.3);
+            } catch(e) {}
+        }
+
+        function toggleFormularioMultaEspecialista() {
+            let selectPersonal = document.getElementById('select-bloqueo-personal').value;
+            let bloqueMulta = document.getElementById('bloque-opcion-multa');
+            
+            if (selectPersonal !== 'general') {
+                bloqueMulta.classList.remove('hidden');
+            } else {
+                bloqueMulta.classList.add('hidden');
+                document.getElementById('chk-aplicar-multa').checked = false;
+                document.getElementById('contenedor-monto-multa').classList.add('hidden');
+            }
+        }
+
+        function toggleInputMontoMulta() {
+            let chk = document.getElementById('chk-aplicar-multa').checked;
+            let contenedor = document.getElementById('contenedor-monto-multa');
+            let plan = obtenerPlanActual();
+
+            if (chk && plan !== 'elite') {
+                alert("🔒 La aplicación de sanciones o multas económicas a especialistas es una función exclusiva del Plan Elite ($29).");
+                document.getElementById('chk-aplicar-multa').checked = false;
+                contenedor.classList.add('hidden');
+                return;
+            }
+
+            if (chk) {
+                contenedor.classList.remove('hidden');
+            } else {
+                contenedor.classList.add('hidden');
+            }
+        }
+
+        async function cargarDiasBloqueados() {
+            try {
+                let res = await fetch(`/api/profesional/${profesionalId}/dias-bloqueados`);
+                if (res.ok) {
+                    diasBloqueadosGlobal = await res.json();
+                    renderizarDiasBloqueados();
+                }
+            } catch(e) {}
+        }
+
+        async function bloquearDiaSeleccionado() {
+            let plan = obtenerPlanActual();
+            let fechaBloq = document.getElementById('input-fecha-bloqueo').value;
+            let selectPersonal = document.getElementById('select-bloqueo-personal').value;
+            let motivo = document.getElementById('input-motivo-bloqueo').value.trim() || 'Día Bloqueado / Ausencia';
+            let chkMulta = document.getElementById('chk-aplicar-multa').checked;
+            let montoMulta = parseFloat(document.getElementById('input-monto-multa').value) || 0.0;
+
+            if (!fechaBloq) { alert("Selecciona una fecha."); return; }
+
+            let personalIdFinal = selectPersonal === 'general' ? null : parseInt(selectPersonal);
+
+            if (personalIdFinal !== null && plan !== 'elite') {
+                alert("🔒 El bloqueo individual por especialista es exclusivo del Plan Elite ($29).");
+                return;
+            }
+
+            let payload = {
+                profesional_id: parseInt(profesionalId),
+                personal_id: personalIdFinal,
+                fecha: fechaBloq,
+                motivo: motivo,
+                aplicar_multa: chkMulta,
+                monto_multa: montoMulta
+            };
+
+            let res = await fetch('/api/profesional/dias-bloqueados', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (res.ok) {
+                alert(`Bloqueo e incidencia registrados con éxito.`);
+                document.getElementById('input-motivo-bloqueo').value = '';
+                document.getElementById('chk-aplicar-multa').checked = false;
+                document.getElementById('input-monto-multa').value = '';
+                document.getElementById('contenedor-monto-multa').classList.add('hidden');
+                
+                cargarDiasBloqueados();
+                cargarMultasEspecialistas();
+            } else {
+                let err = await res.json();
+                alert(err.detail || "No se pudo registrar el bloqueo.");
+            }
+        }
+
+        async function eliminarDiaBloqueado(bloqueoId) {
+            if (confirm("¿Deseas desbloquear este día/registro?")) {
+                let res = await fetch(`/api/profesional/${profesionalId}/dias-bloqueados/${bloqueoId}`, {
+                    method: 'DELETE'
+                });
+                if (res.ok) {
+                    cargarDiasBloqueados();
+                }
+            }
+        }
+
+        function renderizarDiasBloqueados() {
+            const contenedor = document.getElementById('lista-dias-bloqueados');
+            if (!contenedor) return;
+            contenedor.innerHTML = '';
+            if (diasBloqueadosGlobal.length === 0) {
+                contenedor.innerHTML = '<p class="text-slate-400 italic text-[11px]">No hay días u horas bloqueados.</p>';
+                return;
+            }
+            diasBloqueadosGlobal.forEach(b => {
+                let div = document.createElement('div');
+                div.className = "flex justify-between items-center p-2 bg-rose-50 border border-rose-100 rounded-xl text-xs";
+                
+                let etiquetaAfectado = "🏢 Salón Completo";
+                if (b.personal_id) {
+                    let p = personalGlobal.find(item => item.id === b.personal_id);
+                    etiquetaAfectado = p ? `👩‍🎨 ${p.nombre}` : `Espec. #${b.personal_id}`;
+                }
+
+                div.innerHTML = `
+                    <div class="truncate pr-2">
+                        <span class="font-bold text-slate-800">📅 ${b.fecha}</span> 
+                        <span class="text-[10px] text-rose-700 font-semibold">(${etiquetaAfectado})</span>
+                        <p class="text-[10px] text-slate-500 truncate">${b.motivo || 'Sin motivo'}</p>
+                    </div>
+                    <button onclick="eliminarDiaBloqueado(${b.id})" class="text-rose-600 font-bold px-2 shrink-0 text-[11px]">Quitar</button>
+                `;
+                contenedor.appendChild(div);
+            });
+        }
+
+        async function cargarMultasEspecialistas() {
+            try {
+                let res = await fetch(`/api/profesional/${profesionalId}/multas`);
+                if (res.ok) {
+                    multasEspecialistasGlobal = await res.json();
+                    renderizarMultasEspecialistas();
+                }
+            } catch(e) {}
+        }
+
+        function renderizarMultasEspecialistas() {
+            const contenedor = document.getElementById('lista-multas-especialistas');
+            const badgeCount = document.getElementById('badge-total-multas-pendientes');
+            if (!contenedor) return;
+            contenedor.innerHTML = '';
+
+            let pendientes = multasEspecialistasGlobal.filter(m => m.estado === 'pendiente');
+            badgeCount.innerText = `${pendientes.length} Pendientes`;
+
+            if (multasEspecialistasGlobal.length === 0) {
+                contenedor.innerHTML = '<p class="text-slate-400 italic text-[11px]">No hay sanciones registradas.</p>';
+                return;
+            }
+
+            multasEspecialistasGlobal.forEach(m => {
+                let isPagada = m.estado === 'pagada';
+                let badgeColor = isPagada ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700';
+                let sim = datosNegocioGlobal.simbolo_moneda || '$';
+
+                let div = document.createElement('div');
+                div.className = "flex justify-between items-center p-2 bg-slate-50 border rounded-xl text-xs";
+                div.innerHTML = `
+                    <div>
+                        <p class="font-bold text-slate-800">${m.nombre_personal} - <strong class="text-rose-600">${sim}${m.monto.toFixed(2)}</strong></p>
+                        <p class="text-[10px] text-slate-500">${m.motivo} (${m.fecha})</p>
+                    </div>
+                    <div class="flex items-center gap-1">
+                        <span class="px-2 py-0.5 rounded-full font-bold uppercase text-[9px] ${badgeColor}">${m.estado}</span>
+                        ${!isPagada ? `<button onclick="marcarMultaComoPagada(${m.id})" class="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[10px] shadow-sm">Cobrar</button>` : ''}
+                    </div>
+                `;
+                contenedor.appendChild(div);
+            });
+        }
+
+        async function marcarMultaComoPagada(multaId) {
+            if (confirm("¿Confirmas que el especialista ha cancelado esta multa/sanción?")) {
+                let res = await fetch(`/api/multas/${multaId}/estado?estado=pagada`, { method: 'PATCH' });
+                if (res.ok) {
+                    cargarMultasEspecialistas();
+                }
+            }
+        }
+
+        function inicializarMapaAdmin(lat, lng) {
+            if (mapaAdmin) return;
+            mapaAdmin = L.map('mapa-admin').setView([lat, lng], 15);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(mapaAdmin);
+            marcadorAdmin = L.marker([lat, lng], { draggable: true }).addTo(mapaAdmin);
+
+            marcadorAdmin.on('dragend', function (e) {
+                let pos = marcadorAdmin.getLatLng();
+                document.getElementById('edit-latitud').value = pos.lat;
+                document.getElementById('edit-longitud').value = pos.lng;
+            });
+
+            mapaAdmin.on('click', function (e) {
+                marcadorAdmin.setLatLng(e.latlng);
+                document.getElementById('edit-latitud').value = e.latlng.lat;
+                document.getElementById('edit-longitud').value = e.latlng.lng;
+            });
+        }
+
+        function obtenerUbicacionActualAdmin() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(function (position) {
+                    let lat = position.coords.latitude;
+                    let lng = position.coords.longitude;
+                    marcadorAdmin.setLatLng([lat, lng]);
+                    mapaAdmin.setView([lat, lng], 16);
+                    document.getElementById('edit-latitud').value = lat;
+                    document.getElementById('edit-longitud').value = lng;
+                    alert("¡Ubicación GPS obtenida con éxito!");
+                }, function (error) {
+                    alert("No se pudo obtener tu ubicación.");
+                });
+            }
+        }
+
+        function copiarLinkReserva() {
+            let input = document.getElementById('input-enlace-reserva');
+            input.select();
+            navigator.clipboard.writeText(input.value);
+            alert("¡Enlace copiado al portapapeles!");
+        }
+
+        async function actualizarPerfilNegocio(event) {
+            event.preventDefault();
+            let paisSel = datosNegocioGlobal.pais || 'VE';
+            let monedaSel = datosNegocioGlobal.moneda || 'USD';
+            let simboloSel = datosNegocioGlobal.simbolo_moneda || '$';
+
+            let datos = {
+                nombre_negocio: document.getElementById('edit-nombre').value,
+                telefono_whatsapp: document.getElementById('edit-whatsapp').value,
+                pais: paisSel,
+                moneda: monedaSel,
+                simbolo_moneda: simboloSel,
+                direccion: document.getElementById('edit-direccion').value,
+                latitud: parseFloat(document.getElementById('edit-latitud').value) || 10.4534,
+                longitud: parseFloat(document.getElementById('edit-longitud').value) || -64.1705,
+                banco: document.getElementById('edit-banco').value || 'N/A',
+                cedula_rif: document.getElementById('edit-cedula').value || 'N/A',
+                telefono_pago_movil: document.getElementById('edit-telpm').value || 'N/A',
+                metodo_pago_nacional_tipo: document.getElementById('edit-metodo-nacional-tipo').value || 'Pago Local',
+                banco_local: document.getElementById('edit-banco-local').value || '',
+                numero_cuenta_local: document.getElementById('edit-cuenta-local').value || '',
+                titular_cuenta_local: document.getElementById('edit-titular-local').value || '',
+                binance_pay_id: document.getElementById('edit-binance').value || '',
+                airtm_correo: document.getElementById('edit-airtm').value || '',
+                paypal_correo: document.getElementById('edit-paypal').value || '',
+                mostrar_pagos_internacionales: document.getElementById('chk-mostrar-intl') ? document.getElementById('chk-mostrar-intl').checked : true
+            };
+            let res = await fetch(`/api/profesional/${profesionalId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(datos)
+            });
+            if (res.ok) {
+                alert("¡Datos actualizados con éxito!");
+                cargarPanelAdmin();
+            }
+        }
+
+        async function reportarPagoSuscripcion() {
+            let selectPlan = document.getElementById('nuevo-plan-select');
+            let planElegido = esSuspendidoMulta ? 'multa_reactivacion' : (selectPlan ? selectPlan.value : 'profesional');
+            let ref = document.getElementById('ref-pago-suscripcion').value.trim();
+            
+            if (ref.length < 3) {
+                alert("Ingresa la referencia de pago o TXID válido.");
+                return;
+            }
+
+            let precioBase = esSuspendidoMulta ? 5.0 : (planElegido === 'elite' ? 29.0 : 15.0);
+            let precioFinalUsd = precioBase * (1 + comisionSuscripcionActual);
+
+            let res = await fetch('/api/suscripciones/reportar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    profesional_id: parseInt(profesionalId), 
+                    nuevo_plan: planElegido, 
+                    monto_usd: parseFloat(precioFinalUsd.toFixed(2)), 
+                    referencia_pago: ref 
+                })
+            });
+            if (res.ok) {
+                alert("¡Reporte enviado con éxito! Un administrador validará tu pago a la brevedad.");
+                if(document.getElementById('ref-pago-suscripcion')) document.getElementById('ref-pago-suscripcion').value = '';
+                cargarHistorialSuscripcion();
+            }
+        }
+
+        async function cargarHistorialSuscripcion() {
+            try {
+                let res = await fetch(`/api/profesional/${profesionalId}/historial-pagos`);
+                let pagos = await res.json();
+                const contenedor = document.getElementById('lista-historial-suscripcion');
+                if (!contenedor) return;
+                contenedor.innerHTML = '';
+                
+                if (pagos.length === 0) { 
+                    contenedor.innerHTML = '<p class="text-[11px] text-slate-400">Sin pagos registrados.</p>'; 
+                    return; 
+                }
+
+                let ultimosPagos = pagos.slice(-2);
+
+                ultimosPagos.forEach(p => {
+                    let badge = p.estado === 'aprobado' ? 'text-emerald-600' : (p.estado === 'rechazado' ? 'text-rose-600' : 'text-amber-600');
+                    let concepto = p.nuevo_plan === 'multa_reactivacion' ? 'Multa $5' : p.nuevo_plan.toUpperCase();
+                    let div = document.createElement('div');
+                    div.className = "flex justify-between items-center p-2 bg-slate-50 rounded-xl border text-[11px]";
+                    div.innerHTML = `<div><p class="font-bold">Concepto: ${concepto} ($${p.monto_usd})</p><p class="text-[10px] text-slate-500">Ref: ${p.referencia} | ${p.fecha}</p></div><span class="font-black uppercase text-[10px] ${badge}">${p.estado}</span>`;
+                    contenedor.appendChild(div);
+                });
+            } catch(e) {}
+        }
+
+        async function cargarHorariosAdmin() {
+            const contenedor = document.getElementById('lista-horarios-admin');
+            if (!contenedor) return;
+
+            let dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
+            let horarios = [];
+            try {
+                let res = await fetch(`/api/profesional/${profesionalId}/horarios`);
+                if (res.ok) horarios = await res.json();
+            } catch (e) {}
+            contenedor.innerHTML = '';
+            dias.forEach((d, idx) => {
+                let h = Array.isArray(horarios) ? horarios.find(item => item.dia_semana === d) : null;
+                if (!h) h = { hora_apertura: "08:00", hora_cierre_manana: "12:00", hora_apertura_tarde: "13:00", hora_cierre: "18:00", activo: (d !== "Domingo") };
+                let div = document.createElement('div');
+                div.className = "p-2.5 bg-slate-50 rounded-2xl border border-pink-100 text-[11px] space-y-1.5";
+                div.innerHTML = `
+                    <div class="flex justify-between items-center font-bold text-slate-800"><span class="text-xs text-pink-700">${d}</span><label class="flex items-center gap-1 text-[10px] cursor-pointer text-slate-600"><input type="checkbox" ${h.activo ? 'checked' : ''} id="activo-${idx}"> Activo</label></div>
+                    <div class="grid grid-cols-2 gap-1.5 text-[10px]">
+                        <div class="bg-white p-1.5 rounded-xl border"><span class="block text-slate-500 font-bold mb-1">🌅 Mañana</span><div class="flex gap-1"><input type="time" value="${h.hora_apertura || '08:00'}" id="ap-m-${idx}" class="w-full bg-slate-50 rounded border p-1 text-center font-semibold"><input type="time" value="${h.hora_cierre_manana || '12:00'}" id="ci-m-${idx}" class="w-full bg-slate-50 rounded border p-1 text-center font-semibold"></div></div>
+                        <div class="bg-white p-1.5 rounded-xl border"><span class="block text-slate-500 font-bold mb-1">🌆 Tarde</span><div class="flex gap-1"><input type="time" value="${h.hora_apertura_tarde || '13:00'}" id="ap-t-${idx}" class="w-full bg-slate-50 rounded border p-1 text-center font-semibold"><input type="time" value="${h.hora_cierre || '18:00'}" id="ci-t-${idx}" class="w-full bg-slate-50 rounded border p-1 text-center font-semibold"></div></div>
+                    </div>
+                `;
+                contenedor.appendChild(div);
+            });
+        }
+
+        async function guardarHorarios() {
+            let dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
+            let nuevosHorarios = [];
+            dias.forEach((d, idx) => {
+                nuevosHorarios.push({
+                    dia_semana: d,
+                    hora_apertura: document.getElementById(`ap-m-${idx}`).value,
+                    hora_cierre_manana: document.getElementById(`ci-m-${idx}`).value,
+                    hora_apertura_tarde: document.getElementById(`ap-t-${idx}`).value,
+                    hora_cierre: document.getElementById(`ci-t-${idx}`).value,
+                    activo: document.getElementById(`activo-${idx}`).checked
+                });
+            });
+            let res = await fetch(`/api/profesional/${profesionalId}/horarios`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ horarios: nuevosHorarios })
+            });
+            if (res.ok) alert("¡Horarios guardados con éxito!");
+        }
+
+        async function cargarServiciosAdmin() {
+            try {
+                let res = await fetch(`/api/negocio-slug/${slugNegocio}/servicios`);
+                if (res.ok) {
+                    serviciosGlobal = await res.json();
+                } else {
+                    let res2 = await fetch(`/api/servicios/?profesional_id=${profesionalId}`);
+                    if (res2.ok) serviciosGlobal = await res2.json();
+                }
+            } catch(e) { serviciosGlobal = []; }
+
+            let plan = obtenerPlanActual();
+            let serviciosParaMostrar = [...serviciosGlobal];
+            if (plan === 'gratuito' && serviciosParaMostrar.length > 3) {
+                serviciosParaMostrar.sort((a, b) => a.id - b.id);
+                serviciosParaMostrar = serviciosParaMostrar.slice(0, 3);
+            }
+
+            document.getElementById('contador-servicios-activos').innerText = serviciosParaMostrar.length;
+            const contenedor = document.getElementById('lista-mis-servicios');
+            if (!contenedor) return;
+            contenedor.innerHTML = '';
+            let sim = datosNegocioGlobal.simbolo_moneda || '$';
+            
+            if (serviciosParaMostrar.length === 0) {
+                contenedor.innerHTML = '<p class="text-xs text-slate-400 italic">No hay servicios activos.</p>';
+                return;
+            }
+
+            serviciosParaMostrar.forEach(s => {
+                let div = document.createElement('div');
+                div.className = "flex justify-between items-center p-2.5 bg-slate-50 rounded-2xl border text-xs gap-2";
+                div.innerHTML = `<div class="truncate"><p class="font-bold text-slate-800 truncate">${s.nombre}</p><p class="text-[10px] text-slate-400">⏱️ ${s.duracion_minutos || 45} min | <strong class="text-pink-600">${sim}${(s.precio_usd || 0).toFixed(2)}</strong></p></div><div class="flex items-center gap-1.5 shrink-0"><button onclick="abrirModalEditarServicio(${s.id})" class="px-2 py-1 bg-amber-100 text-amber-700 font-bold rounded-lg text-[10px]">✏️ Editar</button><button onclick="eliminarServicio(${s.id})" class="px-2 py-1 bg-rose-100 text-rose-700 font-bold rounded-lg text-[10px]">🗑️ Borrar</button></div>`;
+                contenedor.appendChild(div);
+            });
+        }
+
+        async function crearServicio(event) {
+            event.preventDefault();
+            let plan = obtenerPlanActual();
+            if (plan === 'gratuito' && serviciosGlobal.length >= 3) {
+                alert("🔒 Bloqueado por suscripción: El Plan Gratuito solo permite agregar hasta 3 servicios.");
+                return;
+            }
+            if (plan === 'profesional' && serviciosGlobal.length >= 8) {
+                alert("🔒 Bloqueado por suscripción: El Plan Profesional permite un máximo de 8 servicios.");
+                return;
+            }
+
+            let datos = {
+                profesional_id: parseInt(profesionalId),
+                categoria_id: parseInt(document.getElementById('srv-categoria').value),
+                nombre: document.getElementById('srv-nombre').value,
+                duracion_minutos: parseInt(document.getElementById('srv-duracion').value),
+                precio_usd: parseFloat(document.getElementById('srv-precio').value)
+            };
+            let res = await fetch('/api/servicios/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(datos) });
+            if (res.ok) { 
+                document.getElementById('srv-nombre').value = ''; 
+                cargarServiciosAdmin(); 
+            } else {
+                let errData = await res.json();
+                alert(errData.detail || "No se pudo crear el servicio.");
+            }
+        }
+
+        function abrirModalEditarServicio(id) {
+            let s = serviciosGlobal.find(item => item.id === id);
+            if (!s) return;
+            document.getElementById('edit-srv-id').value = s.id;
+            document.getElementById('edit-srv-categoria').value = s.categoria_id || 1;
+            document.getElementById('edit-srv-nombre').value = s.nombre;
+            document.getElementById('edit-srv-duracion').value = s.duracion_minutos;
+            document.getElementById('edit-srv-precio').value = s.precio_usd;
+            document.getElementById('modal-editar-servicio').classList.remove('hidden');
+        }
+
+        function cerrarModalEditarServicio() { document.getElementById('modal-editar-servicio').classList.add('hidden'); }
+
+        async function guardarEdicionServicio(event) {
+            event.preventDefault();
+            let id = document.getElementById('edit-srv-id').value;
+            let datos = {
+                categoria_id: parseInt(document.getElementById('edit-srv-categoria').value),
+                nombre: document.getElementById('edit-srv-nombre').value,
+                duracion_minutos: parseInt(document.getElementById('edit-srv-duracion').value),
+                precio_usd: parseFloat(document.getElementById('edit-srv-precio').value)
+            };
+            let res = await fetch(`/api/servicios/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(datos) });
+            if (res.ok) { cerrarModalEditarServicio(); cargarServiciosAdmin(); }
+        }
+
+        async function eliminarServicio(id) {
+            if (confirm("¿Estás seguro de eliminar este servicio?")) {
+                let res = await fetch(`/api/servicios/${id}`, { method: 'DELETE' });
+                if (res.ok) cargarServiciosAdmin();
+            }
+        }
+
+        async function cargarPersonalAdmin() {
+            try {
+                let res = await fetch(`/api/personal/${profesionalId}`);
+                if (res.ok) {
+                    personalGlobal = await res.json();
+                }
+            } catch(e) { personalGlobal = []; }
+            
+            let plan = obtenerPlanActual();
+            let personalParaMostrar = [...personalGlobal];
+            if (plan === 'gratuito' && personalParaMostrar.length > 1) {
+                personalParaMostrar.sort((a, b) => a.id - b.id);
+                personalParaMostrar = personalParaMostrar.slice(0, 1);
+            }
+
+            document.getElementById('contador-personal-activos').innerText = personalParaMostrar.length;
+            const contenedor = document.getElementById('lista-personal-admin');
+            const selFiltroExp = document.getElementById('exp-especialista-filtro');
+            const selectBloqueoPersonal = document.getElementById('select-bloqueo-personal');
+            
+            if (contenedor) contenedor.innerHTML = '';
+            if (selFiltroExp) {
+                selFiltroExp.innerHTML = '<option value="todos">Todos los Especialistas</option>';
+            }
+
+            if (selectBloqueoPersonal) {
+                selectBloqueoPersonal.innerHTML = '<option value="general">🏢 Todo el Salón (Feriado / Cierre General)</option>';
+            }
+
+            personalParaMostrar.forEach(p => {
+                let comisionActual = p.comision_porcentaje !== undefined ? p.comision_porcentaje : 50;
+                if (contenedor) {
+                    let div = document.createElement('div');
+                    div.className = "flex justify-between items-center p-2 bg-slate-50 rounded-xl text-xs border gap-2";
+                    div.innerHTML = `
+                        <div class="truncate"><span class="font-bold text-slate-800">${p.nombre}</span><p class="text-[10px] text-slate-500">${p.especialidad} | Comisión: <strong class="text-pink-600">${comisionActual}%</strong></p></div>
+                        <div class="flex items-center gap-1 shrink-0"><button onclick="cambiarComisionPersonal(${p.id}, ${comisionActual})" class="px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-800 font-bold rounded-lg text-[10px] transition shadow-sm" title="Editar Comisión">⚙️ %</button><button onclick="eliminarPersonal(${p.id})" class="text-rose-500 font-bold px-2"><i class="fa-solid fa-trash"></i></button></div>
+                    `;
+                    contenedor.appendChild(div);
+                }
+
+                if (selFiltroExp) {
+                    let opt = document.createElement('option');
+                    opt.value = p.nombre;
+                    opt.innerText = `${p.nombre} (${p.especialidad})`;
+                    selFiltroExp.appendChild(opt);
+                }
+
+                if (selectBloqueoPersonal) {
+                    let opt = document.createElement('option');
+                    opt.value = p.id;
+                    opt.innerText = `👩‍🎨 ${p.nombre} (${p.especialidad})`;
+                    selectBloqueoPersonal.appendChild(opt);
+                }
+            });
+
+            actualizarContabilidadEspecialistas();
+        }
+
+        async function crearPersonal(event) {
+            event.preventDefault();
+            let plan = obtenerPlanActual();
+            if (plan === 'gratuito' && personalGlobal.length >= 1) {
+                alert("🔒 Bloqueado por suscripción: El Plan Gratuito solo permite 1 especialista.");
+                return;
+            }
+            if (plan === 'profesional' && personalGlobal.length >= 3) {
+                alert("🔒 Bloqueado por suscripción: El Plan Profesional permite un máximo de 3 especialistas.");
+                return;
+            }
+
+            let comisionVal = parseFloat(document.getElementById('pers-comision').value) || 50;
+            let datos = { 
+                profesional_id: parseInt(profesionalId), 
+                nombre: document.getElementById('pers-nombre').value, 
+                especialidad: document.getElementById('pers-especialidad').value,
+                comision_porcentaje: comisionVal 
+            };
+            let res = await fetch('/api/personal/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(datos) });
+            if (res.ok) { 
+                document.getElementById('pers-nombre').value = ''; 
+                document.getElementById('pers-comision').value = '50';
+                cargarPersonalAdmin(); 
+            } else {
+                let errData = await res.json();
+                alert(errData.detail || "No se pudo agregar el personal.");
+            }
+        }
+
+        async function cambiarComisionPersonal(id, comisionActual) {
+            let p = personalGlobal.find(item => item.id === id);
+            if (!p) return;
+
+            let nuevoVal = prompt("Ingresa el nuevo porcentaje de comisión para el especialista (Ej: 30, 50, 60):", comisionActual);
+            if (nuevoVal !== null && nuevoVal.trim() !== "") {
+                let comisionNum = parseFloat(nuevoVal.replace(',', '.'));
+                if (isNaN(comisionNum) || comisionNum < 0 || comisionNum > 100) {
+                    alert("Porcentaje inválido. Debe ser un número entre 0 y 100.");
+                    return;
+                }
+                
+                p.comision_porcentaje = comisionNum;
+
+                try {
+                    let datos = { 
+                        profesional_id: parseInt(profesionalId), 
+                        nombre: p.nombre, 
+                        especialidad: p.especialidad, 
+                        comision_porcentaje: comisionNum 
+                    };
+                    await fetch(`/api/personal/${id}`, { 
+                        method: 'PUT', 
+                        headers: { 'Content-Type': 'application/json' }, 
+                        body: JSON.stringify(datos) 
+                    });
+                } catch(e) {}
+
+                alert("¡Comisión actualizada con éxito!");
+                await cargarPersonalAdmin();
+            }
+        }
+
+        async function eliminarPersonal(id) {
+            if (confirm("¿Eliminar especialista?")) {
+                await fetch(`/api/personal/${id}`, { method: 'DELETE' });
+                cargarPersonalAdmin();
+            }
+        }
+
+        async function cargarCitasAdmin() {
+            try {
+                let res = await fetch(`/api/citas/?profesional_id=${profesionalId}`);
+                if (res.ok) citasGlobal = await res.json();
+            } catch(e) { citasGlobal = []; }
+
+            citasGlobal.sort((a, b) => new Date(b.fecha_hora_inicio) - new Date(a.fecha_hora_inicio));
+
+            renderizarCitasPrioritarias();
+            actualizarResumenCalendario();
+            renderizarCitas();
+            calcularIngresos(citasGlobal);
+            generarCRM(citasGlobal);
+            actualizarContabilidadEspecialistas();
+        }
+
+        function actualizarContabilidadEspecialistas() {
+            let plan = obtenerPlanActual();
+            const contenedor = document.getElementById('contenedor-reporte-especialistas');
+            if (!contenedor) return;
+            contenedor.innerHTML = '';
+
+            if (plan === 'gratuito') {
+                contenedor.innerHTML = '<p class="text-xs text-slate-500 font-bold col-span-4 p-3 bg-slate-50 rounded-xl border border-slate-200">ℹ️ El reporte contable avanzado por especialista está optimizado para Planes Profesional y Elite, pero tu agenda y citas de hoy operan con normalidad.</p>';
+                return;
+            }
+
+            if (personalGlobal.length === 0) {
+                contenedor.innerHTML = '<p class="text-xs text-slate-400 col-span-4">No hay especialistas registrados.</p>';
+                return;
+            }
+
+            let hoyStr = new Date().toISOString().split('T')[0];
+            let pais = datosNegocioGlobal.pais || 'VE';
+            let infoImp = configPaises[pais] || configPaises['VE'];
+            let sim = datosNegocioGlobal.simbolo_moneda || '$';
+
+            personalGlobal.forEach(p => {
+                let citasCompletadas = citasGlobal.filter(c => c.personal && c.personal.includes(p.nombre) && c.estado === 'completada');
+                let totalBrutoUSD = citasCompletadas.reduce((sum, c) => sum + c.monto_pagado, 0);
+                
+                let impuestoEstimadoUSD = totalBrutoUSD * (infoImp.tasaImpuesto / 100);
+                let netoSinImpuestoUSD = totalBrutoUSD - impuestoEstimadoUSD;
+
+                let comisionPct = p.comision_porcentaje !== undefined ? p.comision_porcentaje : 50;
+                let comisionTrabajadorUSD = netoSinImpuestoUSD * (comisionPct / 100);
+                let netoSalonUSD = netoSinImpuestoUSD - comisionTrabajadorUSD;
+                let citasHoy = citasCompletadas.filter(c => c.fecha_hora_inicio.startsWith(hoyStr)).length;
+
+                let extraBsHtml = '';
+                if (pais === 'VE') {
+                    let totalBsBCV = totalBrutoUSD * tasaBcvGlobal;
+                    extraBsHtml = `<p class="text-[10px] text-slate-400 border-t border-slate-200 pt-1 mt-1">Bs. ${totalBsBCV.toLocaleString('es-VE', {minimumFractionDigits: 2})} (al cambio BCV)</p>`;
+                }
+
+                let div = document.createElement('div');
+                div.className = "bg-slate-50 p-4 rounded-2xl border border-pink-100 space-y-2 text-xs shadow-sm hover:shadow-md transition";
+                div.innerHTML = `
+                    <div class="flex justify-between items-center border-b border-slate-200 pb-1.5">
+                        <strong class="text-slate-900 font-black text-sm">${p.nombre}</strong>
+                        <span class="text-[10px] bg-pink-100 text-pink-700 font-bold px-2 py-0.5 rounded-full">${p.especialidad}</span>
+                    </div>
+                    <div class="space-y-1 text-slate-600">
+                        <p class="flex justify-between"><span>Citas Completadas:</span> <strong class="text-slate-900">${citasCompletadas.length} (${citasHoy} hoy)</strong></p>
+                        <p class="flex justify-between"><span>Total Bruto Recaudado:</span> <strong class="text-emerald-600 font-black">${sim}${totalBrutoUSD.toFixed(2)}</strong></p>
+                        <p class="flex justify-between text-slate-500"><span>${infoImp.nombreImpuesto} (${infoImp.tasaImpuesto}%):</span> <strong>${sim}${impuestoEstimadoUSD.toFixed(2)}</strong></p>
+                        <p class="flex justify-between text-amber-700 font-medium"><span>Comisión Espec. (${comisionPct}%):</span> <strong>${sim}${comisionTrabajadorUSD.toFixed(2)}</strong></p>
+                        <p class="flex justify-between text-pink-700 font-bold border-t border-slate-200 pt-1"><span>Ganancia Neta Salón:</span> <strong>${sim}${netoSalonUSD.toFixed(2)}</strong></p>
+                        ${extraBsHtml}
+                    </div>
+                `;
+                contenedor.appendChild(div);
+            });
+        }
+
+        function enviarRecordatorioWhatsApp(nombre, wsp, fechaHora, servicio) {
+            let numLimpio = wsp.replace(/^0/, '');
+            let msg = encodeURIComponent(`¡Hola ${nombre}! 👋 Te recordamos tu cita agendada para el ${formatearFechaVE(fechaHora)} (${servicio}) en nuestro salón. ¡Te esperamos puntualmente! ✨`);
+            window.open(`https://wa.me/${numLimpio}?text=${msg}`, '_blank');
+        }
+
+        function imprimirTicketCita(id) {
+            let c = citasGlobal.find(item => item.id === id);
+            if (!c) return;
+
+            let salonNombre = document.getElementById('nombre-negocio-header').innerText;
+            let salonDireccion = document.getElementById('edit-direccion').value || 'Dirección Principal';
+            let pais = datosNegocioGlobal.pais || 'VE';
+            let infoImp = configPaises[pais] || configPaises['VE'];
+            let sim = datosNegocioGlobal.simbolo_moneda || '$';
+            let impuestoCita = c.monto_pagado * (infoImp.tasaImpuesto / 100);
+
+            document.getElementById('tkt-salon').innerText = salonNombre;
+            document.getElementById('tkt-direccion').innerText = salonDireccion;
+            document.getElementById('tkt-fecha-emision').innerText = `Fecha Emisión: ${new Date().toLocaleString()}`;
+            document.getElementById('tkt-cliente').innerText = c.nombre_clienta;
+            document.getElementById('tkt-telefono').innerText = c.whatsapp_clienta;
+            document.getElementById('tkt-servicio').innerText = c.servicio;
+            document.getElementById('tkt-especialista').innerText = c.personal;
+            document.getElementById('tkt-fecha-cita').innerText = formatearFechaVE(c.fecha_hora_inicio);
+
+            let bloqueFinancieroHtml = `<p><strong>MÉTODO / REF:</strong> ${c.referencia_pago_movil}</p>`;
+            bloqueFinancieroHtml += `<p><strong>TOTAL BRUTO:</strong> ${sim}${c.monto_pagado.toFixed(2)}</p>`;
+            bloqueFinancieroHtml += `<p><strong>${infoImp.nombreImpuesto} (${infoImp.tasaImpuesto}%):</strong> ${sim}${impuestoCita.toFixed(2)}</p>`;
+
+            if (pais === 'VE' && c.monto_bs) {
+                bloqueFinancieroHtml += `<p><strong>TOTAL BS (BCV):</strong> Bs. ${c.monto_bs.toLocaleString('es-VE', {minimumFractionDigits: 2})}</p>`;
+            }
+
+            document.getElementById('tkt-bloque-financiero').innerHTML = bloqueFinancieroHtml;
+
+            document.getElementById('area-impresion-ticket').classList.remove('hidden');
+            window.print();
+            document.getElementById('area-impresion-ticket').classList.add('hidden');
+        }
+
+        function generarExportacionPersonalizada(formato) {
+            let plan = obtenerPlanActual();
+            let esp = document.getElementById('exp-especialista-filtro').value;
+
+            if (plan === 'gratuito') {
+                alert("🔒 Funcionalidad bloqueada por suscripción: Actualiza al Plan Profesional o Elite para exportar reportes contables.");
+                return;
+            }
+
+            if (plan === 'profesional' && esp !== 'todos') {
+                alert("🔒 Bloqueado por suscripción: En el Plan Profesional solo puedes descargar el reporte global. ¡Actualiza al Plan Elite ($29) para reportes individuales!");
+                return;
+            }
+
+            let periodo = document.getElementById('exp-periodo-filtro').value;
+            let hoyStr = new Date().toISOString().split('T')[0];
+            let hace7Dias = new Date();
+            hace7Dias.setDate(new Date().getDate() - 7);
+
+            let pais = datosNegocioGlobal.pais || 'VE';
+            let infoImp = configPaises[pais] || configPaises['VE'];
+
+            let citasFiltradas = citasGlobal.filter(c => {
+                let cumpleEsp = (esp === 'todos' || (c.personal && c.personal.includes(esp)));
+                let fechaCita = new Date(c.fecha_hora_inicio.split(' ')[0]);
+
+                let cumplePeriodo = true;
+                if (periodo === 'dia') cumplePeriodo = (c.fecha_hora_inicio.startsWith(hoyStr));
+                if (periodo === 'semana') cumplePeriodo = (fechaCita >= hace7Dias);
+                if (periodo === 'mes') cumplePeriodo = (fechaCita.getMonth() === new Date().getMonth() && fechaCita.getFullYear() === new Date().getFullYear());
+
+                return cumpleEsp && cumplePeriodo;
+            });
+
+            if (citasFiltradas.length === 0) {
+                alert("No hay datos de citas para exportar con los filtros seleccionados.");
+                return;
+            }
+
+            if (formato === 'csv') {
+                let csvContent = `ID\tClienta\tWhatsApp\tServicio\tEspecialista\tFecha\tEstado\tRef Pago\tBruto\tNeto sin Impuesto\t${infoImp.nombreImpuesto} (${infoImp.tasaImpuesto}%)\n`;
+                citasFiltradas.forEach(c => {
+                    let imp = c.monto_pagado * (infoImp.tasaImpuesto / 100);
+                    let neto = c.monto_pagado - imp;
+                    csvContent += `${c.id}\t${c.nombre_clienta}\t${c.whatsapp_clienta}\t${c.servicio}\t${c.personal}\t${c.fecha_hora_inicio}\t${c.estado}\t${c.referencia_pago_movil}\t${c.monto_pagado.toFixed(2)}\t${neto.toFixed(2)}\t${imp.toFixed(2)}\n`;
+                });
+                let blob = new Blob(["\ufeff" + csvContent], { type: 'text/tab-separated-values;charset=utf-8;' });
+                let url = URL.createObjectURL(blob);
+                let link = document.createElement("a");
+                link.href = url;
+                link.download = `Reporte_${periodo}_${esp}.csv`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            } else if (formato === 'pdf') {
+                let win = window.open('', '_blank');
+                let html = `<html><head><title>Reporte Contable Bonnyn</title><style>body{font-family:sans-serif;font-size:11px;padding:20px;} table{width:100%;border-collapse:collapse;margin-top:15px;} th,td{border:1px solid #ccc;padding:6px;text-align:left;} th{background:#f4f4f4;}</style></head><body>`;
+                html += `<h2>Reporte Contable - ${document.getElementById('nombre-negocio-header').innerText}</h2>`;
+                html += `<p>Filtro: <strong>${esp}</strong> | Período: <strong>${periodo}</strong> | País: <strong>${pais}</strong></p>`;
+                html += `<table><thead><tr><th>Fecha</th><th>Clienta</th><th>Servicio</th><th>Especialista</th><th>Ref</th><th>Estado</th><th>Bruto</th><th>${infoImp.nombreImpuesto} (${infoImp.tasaImpuesto}%)</th></tr></thead><tbody>`;
+                citasFiltradas.forEach(c => {
+                    let imp = c.monto_pagado * (infoImp.tasaImpuesto / 100);
+                    html += `<tr><td>${c.fecha_hora_inicio}</td><td>${c.nombre_clienta}</td><td>${c.servicio}</td><td>${c.personal}</td><td>${c.referencia_pago_movil}</td><td>${c.estado}</td><td>$${c.monto_pagado.toFixed(2)}</td><td>$${imp.toFixed(2)}</td></tr>`;
+                });
+                html += `</tbody></table></body></html>`;
+                win.document.write(html);
+                win.document.close();
+                win.print();
+            }
+        }
+
+        function renderizarCitasPrioritarias() {
+            const contenedor = document.getElementById('contenedor-citas-prioritarias');
+            const badgeCount = document.getElementById('badge-prioritarias-count');
+            if (!contenedor) return;
+            contenedor.innerHTML = '';
+
+            let hoyStr = new Date().toISOString().split('T')[0];
+            let prioritarias = citasGlobal.filter(c => {
+                let fechaCitaStr = c.fecha_hora_inicio.split(' ')[0];
+                return c.estado === 'pendiente' || (c.estado === 'confirmada' && fechaCitaStr === hoyStr);
+            });
+
+            badgeCount.innerText = `${prioritarias.length} Urgentes`;
+
+            if (prioritarias.length === 0) {
+                contenedor.innerHTML = '<p class="text-white/80 text-xs py-2 col-span-2">No tienes citas pendientes ni programadas para el día de hoy. ¡Todo al día!</p>';
+                return;
+            }
+
+            let sim = datosNegocioGlobal.simbolo_moneda || '$';
+            prioritarias.forEach(c => {
+                let badgeColor = c.estado === 'pendiente' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800';
+                let fechaFormateadaVE = formatearFechaVE(c.fecha_hora_inicio);
+
+                let div = document.createElement('div');
+                div.className = "bg-white p-3.5 rounded-2xl shadow-sm border border-pink-200 flex flex-col justify-between space-y-2";
+                div.innerHTML = `
+                    <div class="space-y-1">
+                        <div class="flex justify-between items-center font-bold">
+                            <span class="text-slate-900 font-black text-xs">${c.nombre_clienta}</span>
+                            <span class="px-2 py-0.5 rounded-full font-black uppercase text-[9px] ${badgeColor}">${c.estado}</span>
+                        </div>
+                        <p class="text-slate-600 text-[11px]">💅 <strong>${c.servicio}</strong> (${c.personal})</p>
+                        <p class="text-slate-600 text-[11px]">📅 <strong>${fechaFormateadaVE}</strong></p>
+                        <p class="text-slate-600 text-[11px]">💳 Ref: <strong>${c.referencia_pago_movil}</strong> | <strong>${sim}${c.monto_pagado.toFixed(2)}</strong></p>
+                    </div>
+                    <div class="flex flex-wrap gap-1 pt-1 border-t border-slate-100">
+                        ${c.estado === 'pendiente' ? `<button onclick="cambiarEstado(${c.id}, 'confirmada')" class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-1.5 rounded-xl text-[10px] transition">Aprobar</button>` : ''}
+                        <button onclick="cambiarEstado(${c.id}, 'completada')" class="flex-1 bg-sky-500 hover:bg-sky-600 text-white font-bold py-1.5 rounded-xl text-[10px] transition">Completar</button>
+                        <button onclick="enviarRecordatorioWhatsApp('${c.nombre_clienta}', '${c.whatsapp_clienta}', '${c.fecha_hora_inicio}', '${c.servicio}')" class="px-2.5 bg-emerald-100 text-emerald-700 font-bold py-1.5 rounded-xl text-[10px]" title="Enviar WhatsApp"><i class="fa-brands fa-whatsapp text-sm"></i></button>
+                        <button onclick="imprimirTicketCita(${c.id})" class="px-2.5 bg-slate-100 text-slate-700 font-bold py-1.5 rounded-xl text-[10px]" title="Imprimir Ticket"><i class="fa-solid fa-print"></i></button>
+                        <button onclick="abrirModalReprogramar(${c.id})" class="px-2.5 bg-pink-100 text-pink-700 font-bold py-1.5 rounded-xl text-[10px]">📅</button>
+                    </div>
+                `;
+                contenedor.appendChild(div);
+            });
+        }
+
+        function actualizarResumenCalendario() {
+            let fechaSel = document.getElementById('filtro-fecha-calendario').value;
+            const cntConfirmadas = document.getElementById('cant-citas-dia-confirmadas');
+            const cntPendientes = document.getElementById('cant-citas-dia-pendientes');
+            const contenedorDetalle = document.getElementById('detalle-citas-dia');
+
+            if (!fechaSel) return;
+
+            let citasDia = citasGlobal.filter(c => c.fecha_hora_inicio.startsWith(fechaSel));
+            let confirmadas = citasDia.filter(c => c.estado === 'confirmada');
+            let pendientes = citasDia.filter(c => c.estado === 'pendiente');
+
+            cntConfirmadas.innerText = confirmadas.length;
+            cntPendientes.innerText = pendientes.length;
+
+            contenedorDetalle.innerHTML = '';
+            if (citasDia.length === 0) {
+                contenedorDetalle.innerHTML = '<p class="text-slate-400 italic">No hay citas para esta fecha.</p>';
+                return;
+            }
+
+            citasDia.forEach(c => {
+                let div = document.createElement('div');
+                div.className = "flex justify-between items-center p-1.5 bg-white rounded-xl border border-pink-100 text-[10px]";
+                div.innerHTML = `<span>🕒 <strong>${c.fecha_hora_inicio.split(' ')[1]} ${c.fecha_hora_inicio.split(' ')[2] || ''}</strong> - ${c.nombre_clienta} (${c.servicio})</span><span class="font-bold uppercase ${c.estado === 'confirmada' ? 'text-emerald-600' : 'text-amber-600'}">${c.estado}</span>`;
+                contenedorDetalle.appendChild(div);
+            });
+        }
+
+        function filtrarCitas(estado) {
+            filtroActual = estado;
+            paginaActual = 1;
+            document.querySelectorAll('.filter-btn').forEach(b => {
+                b.className = b.dataset.filter === estado ? "px-3 py-1.5 rounded-xl bg-white shadow-sm text-pink-600 font-bold filter-btn" : "px-3 py-1.5 rounded-xl text-slate-600 hover:text-slate-900 font-bold filter-btn";
+            });
+            renderizarCitas();
+        }
+
+        function renderizarCitas() {
+            const contenedor = document.getElementById('contenedor-citas');
+            const controlesPaginacion = document.getElementById('controles-paginacion');
+            const textoBuscador = document.getElementById('buscador-citas-texto') ? document.getElementById('buscador-citas-texto').value.toLowerCase().trim() : '';
+            
+            if (!contenedor) return;
+            contenedor.innerHTML = '';
+            
+            let hoyStr = new Date().toISOString().split('T')[0];
+            let citasFiltradas = [...citasGlobal];
+
+            if (filtroActual !== 'todas') {
+                citasFiltradas = citasFiltradas.filter(c => c.estado === filtroActual);
+            }
+
+            if (filtroActual === 'confirmada' || filtroActual === 'completada') {
+                citasFiltradas = citasFiltradas.filter(c => c.fecha_hora_inicio.split(' ')[0] === hoyStr);
+            }
+
+            if (textoBuscador) {
+                citasFiltradas = citasFiltradas.filter(c => 
+                    c.nombre_clienta.toLowerCase().includes(textoBuscador) || 
+                    (c.referencia_pago_movil && c.referencia_pago_movil.includes(textoBuscador)) ||
+                    c.whatsapp_clienta.includes(textoBuscador)
+                );
+            }
+
+            if (citasFiltradas.length === 0) {
+                contenedor.innerHTML = '<p class="text-xs text-slate-400 text-center py-6">No hay citas registradas bajo estos criterios.</p>';
+                controlesPaginacion.classList.add('hidden');
+                return;
+            }
+
+            let totalPaginas = Math.ceil(citasFiltradas.length / porPagina);
+            if (paginaActual > totalPaginas) paginaActual = totalPaginas;
+            let inicio = (paginaActual - 1) * porPagina;
+            let fin = inicio + porPagina;
+            let citasPaginadas = citasFiltradas.slice(inicio, fin);
+            let sim = datosNegocioGlobal.simbolo_moneda || '$';
+            let pais = datosNegocioGlobal.pais || 'VE';
+
+            citasPaginadas.forEach(c => {
+                let badgeColor = c.estado === 'pendiente' ? 'bg-amber-100 text-amber-700' : (c.estado === 'confirmada' ? 'bg-emerald-100 text-emerald-700' : (c.estado === 'completada' ? 'bg-sky-100 text-sky-700' : 'bg-rose-100 text-rose-700'));
+                let fechaFormateadaVE = formatearFechaVE(c.fecha_hora_inicio);
+                
+                let montoStr = `${sim}${c.monto_pagado.toFixed(2)}`;
+                if (pais === 'VE' && c.monto_bs) {
+                    montoStr += ` (Bs. ${c.monto_bs.toLocaleString('es-VE', {minimumFractionDigits: 2})})`;
+                }
+
+                let botonesAccion = '';
+                if (c.estado === 'completada' || c.estado === 'cancelada') {
+                    botonesAccion = `<button onclick="imprimirTicketCita(${c.id})" class="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition text-[10px]"><i class="fa-solid fa-print mr-1"></i> Ticket</button>`;
+                } else {
+                    botonesAccion += `<button onclick="enviarRecordatorioWhatsApp('${c.nombre_clienta}', '${c.whatsapp_clienta}', '${c.fecha_hora_inicio}', '${c.servicio}')" class="px-2.5 py-1.5 bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold rounded-xl hover:bg-emerald-100 transition"><i class="fa-brands fa-whatsapp text-xs"></i></button>`;
+                    botonesAccion += `<button onclick="imprimirTicketCita(${c.id})" class="px-2.5 py-1.5 bg-slate-100 border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition"><i class="fa-solid fa-print text-xs"></i></button>`;
+                    botonesAccion += `<button onclick="abrirModalReprogramar(${c.id})" class="px-3 py-1.5 bg-pink-50 border border-pink-200 text-pink-600 font-bold rounded-xl hover:bg-pink-100 transition">📅 Reprogramar</button>`;
+                    if (c.estado === 'pendiente') botonesAccion += `<button onclick="cambiarEstado(${c.id}, 'confirmada')" class="px-3 py-1.5 bg-emerald-500 text-white font-bold rounded-xl shadow-sm">Confirmar</button>`;
+                    botonesAccion += `<button onclick="cambiarEstado(${c.id}, 'completada')" class="px-3 py-1.5 bg-sky-500 text-white font-bold rounded-xl shadow-sm">Completar</button>`;
+                    botonesAccion += `<button onclick="cambiarEstado(${c.id}, 'cancelada')" class="px-3 py-1.5 bg-rose-100 text-rose-700 font-bold rounded-xl">Cancelar</button>`;
+                }
+
+                let div = document.createElement('div');
+                div.className = "p-4 rounded-2xl border border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-xs";
+                div.innerHTML = `
+                    <div class="space-y-1">
+                        <div class="flex items-center gap-2"><span class="font-black text-slate-900 text-sm">${c.nombre_clienta}</span><span class="px-2 py-0.5 rounded-full font-black uppercase text-[9px] ${badgeColor}">${c.estado}</span></div>
+                        <p class="text-slate-600">📱 WhatsApp: <a href="https://wa.me/${c.whatsapp_clienta.replace(/^0/, '')}" target="_blank" class="text-pink-600 font-bold hover:underline">${c.whatsapp_clienta}</a></p>
+                        <p class="text-slate-600">💅 Servicio: <strong>${c.servicio}</strong> | Especialista: <strong>${c.personal}</strong></p>
+                        <p class="text-slate-600">📅 Fecha: <strong>${fechaFormateadaVE}</strong></p>
+                        <p class="text-slate-600">💳 Ref: <strong>${c.referencia_pago_movil}</strong> | Monto: <strong>${montoStr}</strong></p>
+                    </div>
+                    <div class="flex flex-wrap gap-1.5 self-end sm:self-center">${botonesAccion}</div>
+                `;
+                contenedor.appendChild(div);
+            });
+
+            if (totalPaginas > 1) {
+                controlesPaginacion.classList.remove('hidden');
+                document.getElementById('info-paginacion').innerText = `Página ${paginaActual} de ${totalPaginas}`;
+                document.getElementById('btn-prev').disabled = paginaActual === 1;
+                document.getElementById('btn-next').disabled = paginaActual === totalPaginas;
+            } else {
+                controlesPaginacion.classList.add('hidden');
+            }
+        }
+
+        function cambiarPagina(dir) {
+            paginaActual += dir;
+            renderizarCitas();
+        }
+
+        function abrirModalReprogramar(id) { document.getElementById('repo-cita-id').value = id; document.getElementById('modal-reprogramar').classList.remove('hidden'); }
+        function cerrarModalReprogramar() { document.getElementById('modal-reprogramar').classList.add('hidden'); }
+
+        async function guardarReprogramacion() {
+            const id = document.getElementById('repo-cita-id').value;
+            const fecha = document.getElementById('repo-fecha').value;
+            const hora = document.getElementById('repo-hora').value;
+            if (!fecha || !hora) { alert("Selecciona la nueva fecha y hora."); return; }
+            let res = await fetch(`/api/citas/${id}/reprogramar`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nueva_fecha_hora_str: `${fecha} ${hora}` }) });
+            if (res.ok) { alert("Cita reprogramada con éxito."); cerrarModalReprogramar(); cargarCitasAdmin(); }
+        }
+
+        async function cambiarEstado(id, nuevoEstado) {
+            await fetch(`/api/citas/${id}/estado?nuevo_estado=${nuevoEstado}`, { method: 'PATCH' });
+            cargarCitasAdmin();
+        }
+
+        function calcularIngresos(citas) {
+            let hoyStr = new Date().toISOString().split('T')[0];
+            let ingHoy = 0, ingSemana = 0, ingMes = 0;
+            let hoyDate = new Date();
+            let hace7Dias = new Date();
+            hace7Dias.setDate(hoyDate.getDate() - 7);
+
+            citas.forEach(c => {
+                if (c.estado !== 'cancelada') {
+                    let fechaCitaStr = c.fecha_hora_inicio.split(' ')[0];
+                    let fechaCitaObj = new Date(fechaCitaStr);
+                    if (fechaCitaStr === hoyStr && c.estado === 'completada') ingHoy += c.monto_pagado;
+                    if (fechaCitaObj >= hace7Dias && fechaCitaObj <= hoyDate) ingSemana += c.monto_pagado;
+                    ingMes += c.monto_pagado;
+                }
+            });
+
+            let sim = datosNegocioGlobal.simbolo_moneda || '$';
+            document.getElementById('ingresos-hoy').innerText = `${sim}${ingHoy.toFixed(2)}`;
+            document.getElementById('ingresos-semana').innerText = `${sim}${ingSemana.toFixed(2)}`;
+            document.getElementById('ingresos-mes').innerText = `${sim}${ingMes.toFixed(2)}`;
+        }
+
+        function generarCRM(citas) {
+            let clientasMap = {};
+            citas.forEach(c => {
+                if (!clientasMap[c.whatsapp_clienta]) clientasMap[c.whatsapp_clienta] = { nombre: c.nombre_clienta, whatsapp: c.whatsapp_clienta, citas: 0 };
+                clientasMap[c.whatsapp_clienta].citas++;
+            });
+            const contenedor = document.getElementById('lista-crm');
+            if (!contenedor) return;
+            contenedor.innerHTML = '';
+            let clientas = Object.values(clientasMap);
+            if (clientas.length === 0) { contenedor.innerHTML = '<p class="text-xs text-slate-400 text-center py-2">No hay clientas registradas aún.</p>'; return; }
+            clientas.forEach(cl => {
+                let div = document.createElement('div');
+                div.className = "flex justify-between items-center p-2.5 bg-slate-50 rounded-2xl border text-xs";
+                div.innerHTML = `<div><p class="font-bold text-slate-800">${cl.nombre}</p><p class="text-[10px] text-slate-500">📱 ${cl.whatsapp}</p></div><span class="px-2.5 py-1 bg-pink-100 text-pink-700 font-black rounded-full text-[10px]">${cl.citas} citas</span>`;
+                contenedor.appendChild(div);
+            });
+        }
+
+        function cerrarSesion() { localStorage.clear(); window.location.href = '/login'; }
+
+        async function verificarEndpointsArranque() {
+            const endpointsCriticos = [
+                '/api/tasa-bcv',
+                `/api/profesional/${profesionalId}`,
+                `/api/servicios/?profesional_id=${profesionalId}`,
+                `/api/personal/${profesionalId}`,
+                `/api/citas/?profesional_id=${profesionalId}`
+            ];
+
+            for (const endpoint of endpointsCriticos) {
+                try {
+                    await fetch(endpoint, { method: 'GET' });
+                } catch (error) {}
+            }
+        }
+
+        window.onload = async function() {
+            await verificarEndpointsArranque();
+            await cargarPanelAdmin();
+        };
+    </script>
+
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/static/sw.js');
+      }
+    </script>
+</body>
+</html>

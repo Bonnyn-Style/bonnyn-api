@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="es" id="html-root">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title id="page-title">Reservar Cita | Bonnyn</title>
+    
+    <!-- Configuración PWA y Enlace de Manifiesto -->
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#e11d48">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <style>
+        #mapa-publico { height: 180px; width: 100%; border-radius: 1rem; z-index: 10; margin-top: 8px; }
+    </style>
+</head>
+<body class="bg-pink-50/40 text-slate-800 font-sans antialiased min-h-screen p-4 sm:p-8 flex items-center justify-center">
+
+    <div class="max-w-xl w-full bg-white p-6 sm:p-8 rounded-3xl shadow-xl border border-pink-100 space-y-6">
+        
+        <!-- CABECERA: Logo Redondo, Nombre del Negocio y Dirección -->
+        <div class="text-center space-y-2 border-b border-pink-100 pb-4">
+            <div class="flex justify-center">
+                <div class="w-20 h-20 rounded-full border-2 border-pink-200 shadow-md overflow-hidden bg-pink-50 flex items-center justify-center">
+                    <img id="negocio-logo" src="" alt="Logo del Salón" class="w-full h-full object-cover hidden">
+                    <div id="negocio-logo-default" class="text-pink-600 font-black text-xl flex items-center justify-center w-full h-full">
+                        <i class="fa-solid fa-store"></i>
+                    </div>
+                </div>
+            </div>
+            <h1 id="negocio-nombre" class="text-xl font-black text-slate-900">Cargando Salón...</h1>
+            <p id="negocio-direccion" class="text-xs text-slate-500 font-medium">📍 Cargando dirección...</p>
+            <div id="contenedor-mapa-publico" class="hidden pt-1">
+                <div id="mapa-publico"></div>
+                <a id="link-google-maps" href="#" target="_blank" class="inline-flex items-center gap-1.5 text-pink-600 font-bold hover:underline text-xs bg-pink-50 px-3 py-1.5 rounded-full border border-pink-100 mt-2">
+                    <i class="fa-solid fa-map-location-dot"></i> <span id="txt-ver-mapa">Abrir ubicación en Google Maps</span>
+                </a>
+            </div>
+        </div>
+
+        <div id="vista-formulario">
+            <div class="mb-4 bg-pink-50/60 p-3 rounded-2xl border border-pink-100 flex items-center justify-between text-xs">
+                <span id="txt-etiqueta-consulta" class="font-bold text-slate-700">¿Ya apartaste tu cita y quieres ver su estatus?</span>
+                <button onclick="toggleBuscadorCita()" id="btn-txt-consultar" class="text-pink-600 font-black underline hover:text-pink-700">Consultar aquí</button>
+            </div>
+
+            <div id="seccion-buscador" class="hidden mb-4 p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2 text-xs">
+                <p id="txt-ingresa-wsp" class="font-bold text-slate-700">Ingresa tu número de WhatsApp para buscar tus citas:</p>
+                <div class="flex gap-2">
+                    <input type="text" id="input-buscar-whatsapp" maxlength="15" placeholder="Ej: 4121234567" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 outline-none" oninput="this.value = this.value.replace(/\D/g, '').replace(/^0+/, '')">
+                    <button onclick="buscarCitasClienta()" id="btn-txt-buscar" class="bg-slate-800 hover:bg-slate-900 text-white font-bold px-4 py-2.5 rounded-xl uppercase transition">Buscar</button>
+                </div>
+                <div id="resultado-busqueda-citas" class="space-y-2 pt-2"></div>
+            </div>
+
+            <form onsubmit="confirmarReserva(event)" class="space-y-4 text-xs">
+                
+                <div class="space-y-1">
+                    <label id="lbl-servicio" class="block font-bold text-slate-700">1. Selecciona el Servicio</label>
+                    <select id="select-servicio" onchange="actualizarPrecioYServicio(); verificarDisponibilidad()" required class="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 outline-none focus:border-pink-500">
+                        <option value="" disabled selected>Cargando servicios...</option>
+                    </select>
+                </div>
+
+                <div class="space-y-1">
+                    <label id="lbl-personal" class="block font-bold text-slate-700">2. Especialista (Opcional)</label>
+                    <select id="select-personal" onchange="verificarDisponibilidad()" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 outline-none focus:border-pink-500">
+                        <option value="" id="opt-cualquier-esp">Cualquier especialista disponible</option>
+                    </select>
+                </div>
+
+                <div class="space-y-2">
+                    <label id="lbl-fecha-hora" class="block font-bold text-slate-700">3. Fecha y Hora de la Cita</label>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <input type="date" id="input-fecha" onchange="validarDisponibilidadHoraria()" required class="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 outline-none focus:border-pink-500">
+                        <input type="time" id="input-hora" onchange="validarDisponibilidadHoraria()" required class="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 outline-none focus:border-pink-500">
+                    </div>
+                    <div id="alerta-horario" class="p-3 rounded-2xl border text-center font-bold text-xs hidden"></div>
+                </div>
+
+                <div class="space-y-3 pt-2 border-t border-slate-100">
+                    <label id="lbl-datos-contacto" class="block font-bold text-slate-700">4. Tus Datos de Contacto</label>
+                    <input type="text" id="input-nombre" required placeholder="Tu Nombre Completo *" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 outline-none focus:border-pink-500">
+                    
+                    <!-- Selector de Código de Área y Teléfono Limpio -->
+                    <div class="flex gap-2">
+                        <select id="select-codigo-pais" class="p-3 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 outline-none focus:border-pink-500">
+                            <option value="+58" selected>🇻🇪 +58</option>
+                            <option value="+57">🇨🇴 +57</option>
+                            <option value="+51">🇵🇪 +51</option>
+                            <option value="+56">🇨🇱 +56</option>
+                            <option value="+54">🇦🇷 +54</option>
+                            <option value="+507">🇵🇦 +507</option>
+                            <option value="+52">🇲🇽 +52</option>
+                            <option value="+1">🇺🇸 +1</option>
+                        </select>
+                        <input type="text" id="input-whatsapp" required maxlength="12" placeholder="4128736254 *" oninput="this.value = this.value.replace(/\D/g, '').replace(/^0+/, '')" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 outline-none focus:border-pink-500">
+                    </div>
+                </div>
+
+                <!-- BLOQUE DE PAGO DINÁMICO CON OPCIONES INTERNACIONALES Y RECARGOS -->
+                <div class="space-y-3 pt-2 border-t border-slate-100 bg-pink-50/50 p-4 rounded-2xl border border-pink-100">
+                    <label id="lbl-metodo-pago" class="block font-black text-pink-900 text-sm">5. Resumen y Método de Pago</label>
+                    
+                    <div class="flex justify-between items-center text-slate-700 font-bold">
+                        <span id="txt-total-servicio">Total del Servicio:</span>
+                        <span id="txt-monto-usd" class="text-pink-600 text-sm">$0.00 USD</span>
+                    </div>
+
+                    <!-- PAGO MÓVIL / NACIONAL (VENEZUELA O LOCAL) -->
+                    <div id="bloque-pago-ve">
+                        <div class="flex justify-between items-center text-slate-700 font-bold mt-1">
+                            <span id="txt-monto-bs-label">Monto en Bolívares (BCV):</span>
+                            <span id="txt-monto-bs" class="text-slate-900 text-sm">Bs. 0,00</span>
+                        </div>
+                        <p id="txt-tasa-ref" class="text-[10px] text-slate-400">Tasa oficial aplicada: Bs. 0,00 / USD</p>
+
+                        <!-- PESTAÑAS SELECCIONADORAS SI PAGOS INTERNACIONALES ESTÁN ACTIVOS -->
+                        <div id="selector-tabs-pago" class="hidden grid grid-cols-2 gap-2 pt-2">
+                            <button type="button" id="tab-pago-nacional" onclick="cambiarMetodoPagoVisual('nacional')" class="p-2 rounded-xl font-black text-center transition border border-pink-500 bg-pink-600 text-white shadow-sm">
+                                🇻🇪 Pago Móvil
+                            </button>
+                            <button type="button" id="tab-pago-intl" onclick="cambiarMetodoPagoVisual('internacional')" class="p-2 rounded-xl font-bold text-center transition border border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
+                                🌐 Pagar en $ (Intl)
+                            </button>
+                        </div>
+
+                        <!-- DETALLE PAGO MÓVIL -->
+                        <div id="contenido-pago-movil-detalles" class="bg-white p-3 rounded-xl border border-pink-200 space-y-1 text-[11px] mt-2">
+                            <p class="font-bold text-pink-800"><i class="fa-solid fa-building-columns mr-1"></i> <span id="txt-datos-pm">Datos para el Pago Móvil:</span></p>
+                            <p>Banco: <strong id="pago-banco">-</strong></p>
+                            <p>RIF/Cédula: <strong id="pago-cedula">-</strong></p>
+                            <p>Teléfono: <strong id="pago-telefono">-</strong></p>
+                        </div>
+
+                        <!-- DETALLE PASARELAS INTERNACIONALES (BINANCE / AIRTM / PAYPAL) CON SELECCIÓN DE MÉTODO Y RECARGOS -->
+                        <div id="contenido-pago-intl-detalles" class="hidden bg-white p-3 rounded-xl border border-pink-200 space-y-2 text-[11px] mt-2">
+                            <p class="font-black text-pink-900"><i class="fa-solid fa-globe mr-1 text-pink-600"></i> Selecciona tu Pasarela Internacional:</p>
+                            
+                            <div class="grid grid-cols-3 gap-1.5 pt-1">
+                                <button type="button" id="btn-pasarela-binance" onclick="seleccionarPasarelaIntl('binance')" class="p-2 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 font-bold text-center transition">
+                                    🟡 Binance <span class="block text-[9px] opacity-75">0% com.</span>
+                                </button>
+                                <button type="button" id="btn-pasarela-airtm" onclick="seleccionarPasarelaIntl('airtm')" class="p-2 rounded-lg border border-slate-200 bg-white text-slate-700 font-bold text-center transition">
+                                    🔵 Airtm <span class="block text-[9px] opacity-75">+1% com.</span>
+                                </button>
+                                <button type="button" id="btn-pasarela-paypal" onclick="seleccionarPasarelaIntl('paypal')" class="p-2 rounded-lg border border-slate-200 bg-white text-slate-700 font-bold text-center transition">
+                                    🅿️ PayPal <span class="block text-[9px] opacity-75">+4% com.</span>
+                                </button>
+                            </div>
+
+                            <div id="info-cuenta-intl-activa" class="pt-2 border-t border-slate-100 mt-2 space-y-1">
+                                <p class="text-slate-700" id="txt-instruccion-pasarela">Selecciona una opción arriba para ver los datos de pago.</p>
+                            </div>
+                        </div>
+
+                        <div class="mt-3">
+                            <label id="lbl-ref-bancaria" class="block font-bold text-slate-700 mb-1">Número de Referencia o Comprobante (8 Dígitos) *</label>
+                            <input type="text" id="input-referencia" maxlength="40" placeholder="Ej: 12345678" class="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 outline-none focus:border-pink-500">
+                        </div>
+                    </div>
+
+                    <!-- SI ES OTRO PAÍS INTERNACIONAL -->
+                    <div id="bloque-pago-int" class="hidden space-y-3">
+                        <div class="bg-white p-3.5 rounded-xl border border-pink-200 space-y-2 text-[11px]">
+                            <p class="font-black text-pink-900 flex items-center gap-1.5">
+                                <i class="fa-solid fa-credit-card text-pink-600"></i> <span id="txt-metodo-pago-int">Datos de Pago del Salón:</span>
+                            </p>
+                            <div id="detalle-pago-local-cliente" class="space-y-1 text-slate-700 font-medium">
+                                <p>Método: <strong id="cli-metodo-tipo">-</strong></p>
+                                <p>Banco / Entidad: <strong id="cli-metodo-banco">-</strong></p>
+                                <p>Cuenta / Celular: <strong id="cli-metodo-cuenta">-</strong></p>
+                                <p>Titular / Doc: <strong id="cli-metodo-titular">-</strong></p>
+                            </div>
+
+                            <div id="contenedor-pasarelas-globales-cliente" class="pt-2 border-t border-slate-100 space-y-1 hidden">
+                                <p class="font-bold text-slate-800"><i class="fa-solid fa-globe mr-1"></i> Opciones Internacionales:</p>
+                                <p id="cli-binance-line" class="hidden">🟡 Binance Pay ID: <strong id="cli-binance">-</strong></p>
+                                <p id="cli-airtm-line" class="hidden">🔵 Airtm Correo: <strong id="cli-airtm">-</strong></p>
+                                <p id="cli-paypal-line" class="hidden">🅿️ PayPal Correo: <strong id="cli-paypal">-</strong></p>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block font-bold text-slate-700 mb-1">Número de Referencia o Comprobante *</label>
+                            <input type="text" id="input-referencia-int" placeholder="Ej: Nº de operación o transferencia" class="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 outline-none focus:border-pink-500">
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="space-y-3 pt-2">
+                    <div class="flex items-start gap-2">
+                        <input type="checkbox" id="check-terminos" required class="w-4 h-4 text-pink-600 rounded mt-0.5">
+                        <span id="txt-acepto-terminos" class="text-slate-600 leading-tight">
+                            Acepto las <button type="button" onclick="abrirModalTerminos(event)" class="text-pink-600 font-bold underline hover:text-pink-700">Políticas de Reserva, Términos de Servicio y Privacidad</button>.
+                        </span>
+                    </div>
+
+                    <button type="submit" id="btn-reservar" class="w-full bg-pink-600 hover:bg-pink-700 text-white font-black p-3.5 rounded-2xl uppercase transition shadow-md tracking-wider">
+                        <i class="fa-solid fa-check-circle mr-1"></i> <span id="txt-btn-confirmar">Confirmar y Reservar Cita</span>
+                    </button>
+                </div>
+
+            </form>
+        </div>
+
+        <div id="vista-exito" class="hidden space-y-6 text-center py-4">
+            <div class="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-3xl shadow-inner">
+                <i class="fa-solid fa-circle-check"></i>
+            </div>
+            
+            <div class="space-y-2">
+                <h2 id="txt-exito-titulo" class="text-xl font-black text-slate-900">¡Cita Agendada con Éxito!</h2>
+                <p id="txt-exito-sub" class="text-xs text-slate-500">Tu reserva ha sido registrada correctamente. Te esperamos en el salón.</p>
+            </div>
+
+            <div class="bg-pink-50/50 p-5 rounded-3xl border border-pink-100 text-left space-y-2 text-xs">
+                <p id="txt-resumen-titulo" class="font-black text-pink-900 border-b border-pink-200 pb-2"><i class="fa-solid fa-receipt mr-1"></i> Resumen de tu Cita:</p>
+                <p><span id="lbl-res-cliente">Clienta</span>: <strong id="res-nombre" class="text-slate-800">-</strong></p>
+                <p>WhatsApp: <strong id="res-whatsapp" class="text-slate-800">-</strong></p>
+                <p><span id="lbl-res-servicio">Servicio</span>: <strong id="res-servicio" class="text-slate-800">-</strong></p>
+                <p><span id="lbl-res-especialista">Especialista</span>: <strong id="res-personal" class="text-slate-800">-</strong></p>
+                <p><span id="lbl-res-fecha">Fecha y Hora</span>: <strong id="res-fecha" class="text-slate-800">-</strong></p>
+                <p><span id="lbl-res-pago">Método / Referencia</span>: <strong id="res-ref" class="text-slate-800">-</strong></p>
+                <p><span id="lbl-res-monto">Monto</span>: <strong id="res-monto" class="text-pink-600">-</strong></p>
+            </div>
+
+            <div class="pt-2 space-y-2">
+                <button onclick="window.location.reload()" id="txt-btn-otra" class="w-full bg-pink-600 hover:bg-pink-700 text-white font-black p-3.5 rounded-2xl uppercase transition shadow-md text-xs">
+                    Agendar otra cita
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- MODAL DE TÉRMINOS, SERVICIO Y PRIVACIDAD -->
+    <div id="modalTerminos" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
+            <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                <h3 class="font-black text-slate-900 text-sm uppercase">Términos, Privacidad & Exoneración Legal</h3>
+                <button onclick="cerrarModalTerminos()" class="text-slate-400 hover:text-slate-700 text-xl font-bold">&times;</button>
+            </div>
+            
+            <div class="space-y-3 text-xs text-slate-600 leading-relaxed text-left">
+                <p><strong>1. Naturaleza Tecnológica (SaaS B2B):</strong> Bonnyn opera exclusivamente como una plataforma tecnológica proveedora de software de gestión, agenda y automatización operativa. Bonnyn <strong>no interviene, recauda, custodia ni administra fondos monetarios</strong> de ninguna transacción realizada entre los clientes y los establecimientos asociados.</p>
+                
+                <p><strong>2. Independencia Financiera:</strong> Toda transacción, pago móvil, transferencia o manejo de divisas por los servicios agendados es responsabilidad directa, autónoma y exclusiva entre el cliente y el socio comercial. Bonnyn queda total y legalmente exonerada de cualquier disputa económica o reembolso.</p>
+                
+                <p><strong>3. Privacidad y Datos:</strong> Sus datos de contacto son utilizados estrictamente para las notificaciones automáticas de sus reservas operadas por el establecimiento.</p>
+            </div>
+
+            <div class="pt-3 border-t border-slate-100 text-right">
+                <button onclick="cerrarModalTerminos()" class="bg-pink-600 text-white font-bold px-5 py-2.5 rounded-xl text-xs hover:bg-pink-700 transition">Entendido y de Acuerdo</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script>
+        const pathSegments = window.location.pathname.split('/');
+        const slugNegocio = pathSegments[pathSegments.length - 1] || pathSegments[pathSegments.length - 2];
+        
+        let serviciosGlobal = [];
+        let horariosGlobal = [];
+        let personalGlobal = [];
+        let tasaBcvGlobal = 1.0;
+        let datosNegocioGlobal = {};
+        let personalAsignadoFinalId = null;
+        let metodoPagoSeleccionadoVisual = 'nacional';
+        let pasarelaIntlSeleccionada = 'binance';
+        let precioBaseServicioUsd = 0.0;
+
+        const traducciones = {
+            es: {
+                verMapa: "Abrir ubicación en Google Maps",
+                consultar: "¿Ya apartaste tu cita y quieres ver su estatus?",
+                btnConsultar: "Consultar aquí",
+                ingresaWsp: "Ingresa tu número de WhatsApp para buscar tus citas:",
+                btnBuscar: "Buscar",
+                lblServicio: "1. Selecciona el Servicio",
+                lblPersonal: "2. Especialista (Opcional)",
+                cualquierEsp: "Cualquier especialista disponible",
+                lblFechaHora: "3. Fecha y Hora de la Cita",
+                lblDatosContacto: "4. Tus Datos de Contacto",
+                phNombre: "Tu Nombre Completo *",
+                phWsp: "4128736254 *",
+                lblMetodoPago: "5. Resumen y Método de Pago",
+                totalServicio: "Total del Servicio:",
+                montoBsLabel: "Monto en Bolívares (BCV):",
+                datosPM: "Datos para el Pago Móvil:",
+                lblRefBancaria: "Número de Referencia o Comprobante (8 Dígitos) *",
+                metodoPagoInt: "Métodos de Pago Disponibles:",
+                btnConfirmar: "Confirmar y Reservar Cita",
+                exitoTitulo: "¡Cita Agendada con Éxito!",
+                exitoSub: "Tu reserva ha sido registrada correctamente. Te esperamos en el salón.",
+                resumenTitulo: "Resumen de tu Cita:",
+                lblCliente: "Clienta",
+                lblServicioRes: "Servicio",
+                lblEspecialista: "Especialista",
+                lblFecha: "Fecha y Hora",
+                lblPago: "Método / Referencia",
+                lblMonto: "Monto",
+                btnOtra: "Agendar otra cita"
+            },
+            en: {
+                verMapa: "Open location in Google Maps",
+                consultar: "Already booked an appointment? Check status",
+                btnConsultar: "Check status here",
+                ingresaWsp: "Enter your WhatsApp number to find your bookings:",
+                btnBuscar: "Search",
+                lblServicio: "1. Select Service",
+                lblPersonal: "2. Specialist (Optional)",
+                cualquierEsp: "Any available specialist",
+                lblFechaHora: "3. Appointment Date & Time",
+                lblDatosContacto: "4. Your Contact Details",
+                phNombre: "Full Name *",
+                phWsp: "Phone Number *",
+                lblMetodoPago: "5. Summary & Payment Method",
+                totalServicio: "Total Price:",
+                montoBsLabel: "Local Currency Amount:",
+                datosPM: "Payment Details:",
+                lblRefBancaria: "Reference Number (8 Digits) *",
+                metodoPagoInt: "Available Payment Methods:",
+                btnConfirmar: "Confirm & Book Appointment",
+                exitoTitulo: "Appointment Booked Successfully!",
+                exitoSub: "Your reservation has been recorded. We look forward to seeing you.",
+                resumenTitulo: "Booking Summary:",
+                lblCliente: "Client",
+                lblServicioRes: "Service",
+                lblEspecialista: "Specialist",
+                lblFecha: "Date & Time",
+                lblPago: "Payment / Reference",
+                lblMonto: "Amount",
+                btnOtra: "Book another appointment"
+            }
+        };
+
+        function abrirModalTerminos(e) { e.preventDefault(); document.getElementById('modalTerminos').classList.remove('hidden'); }
+        function cerrarModalTerminos() { document.getElementById('modalTerminos').classList.add('hidden'); }
+
+        function aplicarIdioma(idioma) {
+            let t = traducciones[idioma] || traducciones['es'];
+            document.getElementById('html-root').lang = idioma;
+            document.getElementById('txt-ver-mapa').innerText = t.verMapa;
+            document.getElementById('txt-etiqueta-consulta').innerText = t.consultar;
+            document.getElementById('btn-txt-consultar').innerText = t.btnConsultar;
+            document.getElementById('txt-ingresa-wsp').innerText = t.ingresaWsp;
+            document.getElementById('btn-txt-buscar').innerText = t.btnBuscar;
+            document.getElementById('lbl-servicio').innerText = t.lblServicio;
+            document.getElementById('lbl-personal').innerText = t.lblPersonal;
+            document.getElementById('opt-cualquier-esp').innerText = t.cualquierEsp;
+            document.getElementById('lbl-fecha-hora').innerText = t.lblFechaHora;
+            document.getElementById('lbl-datos-contacto').innerText = t.lblDatosContacto;
+            document.getElementById('input-nombre').placeholder = t.phNombre;
+            document.getElementById('input-whatsapp').placeholder = t.phWsp;
+            document.getElementById('lbl-metodo-pago').innerText = t.lblMetodoPago;
+            document.getElementById('txt-total-servicio').innerText = t.totalServicio;
+            document.getElementById('txt-datos-pm').innerText = t.datosPM;
+            document.getElementById('lbl-ref-bancaria').innerText = t.lblRefBancaria;
+            document.getElementById('txt-metodo-pago-int').innerText = t.metodoPagoInt;
+            document.getElementById('txt-btn-confirmar').innerText = t.btnConfirmar;
+            document.getElementById('txt-exito-titulo').innerText = t.exitoTitulo;
+            document.getElementById('txt-exito-sub').innerText = t.exitoSub;
+            document.getElementById('txt-resumen-titulo').innerHTML = `<i class="fa-solid fa-receipt mr-1"></i> ${t.resumenTitulo}`;
+            document.getElementById('lbl-res-cliente').innerText = t.lblCliente;
+            document.getElementById('lbl-res-servicio').innerText = t.lblServicioRes;
+            document.getElementById('lbl-res-especialista').innerText = t.lblEspecialista;
+            document.getElementById('lbl-res-fecha').innerText = t.lblFecha;
+            document.getElementById('lbl-res-pago').innerText = t.lblPago;
+            document.getElementById('lbl-res-monto').innerText = t.lblMonto;
+            document.getElementById('txt-btn-otra').innerText = t.btnOtra;
+        }
+
+        function cambiarMetodoPagoVisual(tipo) {
+            metodoPagoSeleccionadoVisual = tipo;
+            let tabNac = document.getElementById('tab-pago-nacional');
+            let tabInt = document.getElementById('tab-pago-intl');
+            let detPM = document.getElementById('contenido-pago-movil-detalles');
+            let detInt = document.getElementById('contenido-pago-intl-detalles');
+            let labelRef = document.getElementById('lbl-ref-bancaria');
+            let inputRef = document.getElementById('input-referencia');
+
+            if (tipo === 'nacional') {
+                tabNac.className = "p-2 rounded-xl font-black text-center transition border border-pink-500 bg-pink-600 text-white shadow-sm";
+                tabInt.className = "p-2 rounded-xl font-bold text-center transition border border-slate-200 bg-white text-slate-700 hover:bg-slate-50";
+                detPM.classList.remove('hidden');
+                detInt.classList.add('hidden');
+                
+                labelRef.innerText = "Número de Referencia Bancaria (8 Dígitos) *";
+                inputRef.placeholder = "Ej: 12345678";
+                inputRef.maxLength = 8;
+            } else {
+                tabInt.className = "p-2 rounded-xl font-black text-center transition border border-pink-500 bg-pink-600 text-white shadow-sm";
+                tabNac.className = "p-2 rounded-xl font-bold text-center transition border border-slate-200 bg-white text-slate-700 hover:bg-slate-50";
+                detInt.classList.remove('hidden');
+                detPM.classList.add('hidden');
+                seleccionarPasarelaIntl('binance');
+            }
+            actualizarPrecioYServicio();
+        }
+
+        function seleccionarPasarelaIntl(pasarela) {
+            pasarelaIntlSeleccionada = pasarela;
+            let btnBinance = document.getElementById('btn-pasarela-binance');
+            let btnAirtm = document.getElementById('btn-pasarela-airtm');
+            let btnPaypal = document.getElementById('btn-pasarela-paypal');
+            let txtInstruccion = document.getElementById('txt-instruccion-pasarela');
+            let labelRef = document.getElementById('lbl-ref-bancaria');
+            let inputRef = document.getElementById('input-referencia');
+
+            btnBinance.className = "p-2 rounded-lg border border-slate-200 bg-white text-slate-700 font-bold text-center transition";
+            btnAirtm.className = "p-2 rounded-lg border border-slate-200 bg-white text-slate-700 font-bold text-center transition";
+            btnPaypal.className = "p-2 rounded-lg border border-slate-200 bg-white text-slate-700 font-bold text-center transition";
+
+            if (pasarela === 'binance') {
+                btnBinance.className = "p-2 rounded-lg border border-amber-400 bg-amber-50 text-amber-900 font-bold text-center transition shadow-sm";
+                let binanceId = datosNegocioGlobal.binance_pay_id || 'No configurado';
+                txtInstruccion.innerHTML = `🟡 <strong>Binance Pay ID:</strong> <span class="font-mono text-slate-900 font-bold select-all">${binanceId}</span><br><span class="text-[10px] text-emerald-600 font-bold">✓ Sin comisiones (0%)</span>`;
+                
+                labelRef.innerText = "ID de Orden o TXID de Binance Pay *";
+                inputRef.placeholder = "Ej: 83749201842";
+                inputRef.maxLength = 30;
+            } else if (pasarela === 'airtm') {
+                btnAirtm.className = "p-2 rounded-lg border border-sky-400 bg-sky-50 text-sky-900 font-bold text-center transition shadow-sm";
+                let airtmCorreo = datosNegocioGlobal.airtm_correo || 'No configurado';
+                txtInstruccion.innerHTML = `🔵 <strong>Airtm Correo:</strong> <span class="font-mono text-slate-900 font-bold select-all">${airtmCorreo}</span><br><span class="text-[10px] text-amber-600 font-bold">⚡ Incluye +1% por comisión de red</span>`;
+                
+                labelRef.innerText = "ID de Transferencia / Operación Airtm *";
+                inputRef.placeholder = "Ej: 98765432";
+                inputRef.maxLength = 25;
+            } else if (pasarela === 'paypal') {
+                btnPaypal.className = "p-2 rounded-lg border border-indigo-400 bg-indigo-50 text-indigo-900 font-bold text-center transition shadow-sm";
+                let paypalCorreo = datosNegocioGlobal.paypal_correo || 'No configurado';
+                txtInstruccion.innerHTML = `🅿️ <strong>PayPal Correo:</strong> <span class="font-mono text-slate-900 font-bold select-all">${paypalCorreo}</span><br><span class="text-[10px] text-amber-600 font-bold">⚡ Incluye +4% por comisión de plataforma</span>`;
+                
+                labelRef.innerText = "ID de Transacción de PayPal (Alfanumérico) *";
+                inputRef.placeholder = "Ej: 8XT54321AB901234C";
+                inputRef.maxLength = 40;
+            }
+
+            actualizarPrecioYServicio();
+        }
+
+        async function inicializarReserva() {
+            try {
+                let resTasa = await fetch('/api/tasa-bcv');
+                let dataTasa = await resTasa.json();
+                tasaBcvGlobal = dataTasa.tasa || 1.0;
+
+                let resProf = await fetch(`/api/negocio-slug/${slugNegocio}`);
+                if (!resProf.ok) { alert("Negocio no encontrado o suspendido."); return; }
+                datosNegocioGlobal = await resProf.json();
+                
+                aplicarIdioma(datosNegocioGlobal.idioma || 'es');
+                document.getElementById('negocio-nombre').innerText = datosNegocioGlobal.nombre_negocio;
+                document.getElementById('negocio-direccion').innerText = datosNegocioGlobal.direccion ? `📍 ${datosNegocioGlobal.direccion}` : '📍 Dirección no especificada';
+                
+                const imgLogo = document.getElementById('negocio-logo');
+                const defaultLogo = document.getElementById('negocio-logo-default');
+                if (datosNegocioGlobal.logo_url) {
+                    imgLogo.src = datosNegocioGlobal.logo_url;
+                    imgLogo.classList.remove('hidden');
+                    defaultLogo.classList.add('hidden');
+                } else {
+                    imgLogo.classList.add('hidden');
+                    defaultLogo.classList.remove('hidden');
+                }
+
+                if (datosNegocioGlobal.latitud && datosNegocioGlobal.longitud) {
+                    document.getElementById('contenedor-mapa-publico').classList.remove('hidden');
+                    let mapUrl = `https://www.google.com/maps/search/?api=1&query=${datosNegocioGlobal.latitud},${datosNegocioGlobal.longitud}`;
+                    document.getElementById('link-google-maps').href = mapUrl;
+
+                    let mapaPub = L.map('mapa-publico').setView([datosNegocioGlobal.latitud, datosNegocioGlobal.longitud], 16);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(mapaPub);
+                    L.marker([datosNegocioGlobal.latitud, datosNegocioGlobal.longitud]).addTo(mapaPub);
+                }
+                
+                let esVenezuela = (!datosNegocioGlobal.pais || datosNegocioGlobal.pais === 'VE');
+                
+                if (esVenezuela) {
+                    document.getElementById('bloque-pago-ve').classList.remove('hidden');
+                    document.getElementById('bloque-pago-int').classList.add('hidden');
+                    document.getElementById('pago-banco').innerText = datosNegocioGlobal.banco || '-';
+                    document.getElementById('pago-cedula').innerText = datosNegocioGlobal.cedula_rif || '-';
+                    document.getElementById('pago-telefono').innerText = datosNegocioGlobal.telefono_pago_movil || '-';
+                    document.getElementById('input-referencia').required = true;
+
+                    if (datosNegocioGlobal.mostrar_pagos_internacionales !== false) {
+                        let hayAlgunaPasarelaIntl = false;
+                        if (datosNegocioGlobal.binance_pay_id || datosNegocioGlobal.airtm_correo || datosNegocioGlobal.paypal_correo) {
+                            hayAlgunaPasarelaIntl = true;
+                        }
+                        if (hayAlgunaPasarelaIntl) {
+                            document.getElementById('selector-tabs-pago').classList.remove('hidden');
+                        }
+                    }
+                } else {
+                    document.getElementById('bloque-pago-ve').classList.add('hidden');
+                    document.getElementById('bloque-pago-int').classList.remove('hidden');
+                    
+                    document.getElementById('cli-metodo-tipo').innerText = datosNegocioGlobal.metodo_pago_nacional_tipo || 'Transferencia / Pago Local';
+                    document.getElementById('cli-metodo-banco').innerText = datosNegocioGlobal.banco_local || 'No especificado';
+                    document.getElementById('cli-metodo-cuenta').innerText = datosNegocioGlobal.numero_cuenta_local || 'No especificado';
+                    document.getElementById('cli-metodo-titular').innerText = datosNegocioGlobal.titular_cuenta_local || 'No especificado';
+
+                    if (datosNegocioGlobal.mostrar_pagos_internacionales !== false) {
+                        let contenedorPasarelasGlobales = document.getElementById('contenedor-pasarelas-globales-cliente');
+                        let hayGlobal = false;
+                        
+                        if (datosNegocioGlobal.binance_pay_id) {
+                            document.getElementById('cli-binance').innerText = datosNegocioGlobal.binance_pay_id;
+                            document.getElementById('cli-binance-line').classList.remove('hidden');
+                            hayGlobal = true;
+                        }
+                        if (datosNegocioGlobal.airtm_correo) {
+                            document.getElementById('cli-airtm').innerText = datosNegocioGlobal.airtm_correo;
+                            document.getElementById('cli-airtm-line').classList.remove('hidden');
+                            hayGlobal = true;
+                        }
+                        if (datosNegocioGlobal.paypal_correo) {
+                            document.getElementById('cli-paypal').innerText = datosNegocioGlobal.paypal_correo;
+                            document.getElementById('cli-paypal-line').classList.remove('hidden');
+                            hayGlobal = true;
+                        }
+                        if (hayGlobal) {
+                            contenedorPasarelasGlobales.classList.remove('hidden');
+                        }
+                    }
+
+                    document.getElementById('input-referencia-int').required = true;
+                }
+
+                let resHorarios = await fetch(`/api/profesional/${datosNegocioGlobal.id}/horarios`);
+                if (resHorarios.ok) { horariosGlobal = await resHorarios.json(); }
+
+                let resServicios = await fetch(`/api/negocio-slug/${slugNegocio}/servicios`);
+                serviciosGlobal = await resServicios.json();
+                
+                // --- APLICAR EFECTO EMBUDO: PLAN GRATUITO MÁXIMO 3 SERVICIOS ---
+                let planSocio = (datosNegocioGlobal.plan || 'gratuito').toLowerCase();
+                let serviciosAMostrar = serviciosGlobal;
+                if (planSocio === 'gratuito' && serviciosGlobal.length > 3) {
+                    serviciosAMostrar = serviciosGlobal.sort((a, b) => a.id - b.id).slice(0, 3);
+                } else if (planSocio === 'profesional' && serviciosGlobal.length > 8) {
+                    serviciosAMostrar = serviciosGlobal.sort((a, b) => a.id - b.id).slice(0, 8);
+                }
+
+                const selServicio = document.getElementById('select-servicio');
+                selServicio.innerHTML = '<option value="" disabled selected>Selecciona un servicio...</option>';
+                serviciosAMostrar.forEach(s => {
+                    let opt = document.createElement('option');
+                    opt.value = s.id;
+                    opt.dataset.precio = s.precio_usd;
+                    opt.dataset.nombre = s.nombre;
+                    let simMoneda = datosNegocioGlobal.simbolo_moneda || '$';
+                    opt.innerText = `${s.nombre} - ${simMoneda}${s.precio_usd.toFixed(2)} (${s.duracion_minutos} min)`;
+                    selServicio.appendChild(opt);
+                });
+
+                // --- APLICAR EFECTO EMBUDO: PLAN GRATUITO MÁXIMO 1 ESPECIALISTA ---
+                let personalAMostrar = datosNegocioGlobal.personal || [];
+                if (planSocio === 'gratuito' && personalAMostrar.length > 1) {
+                    personalAMostrar = personalAMostrar.sort((a, b) => a.id - b.id).slice(0, 1);
+                } else if (planSocio === 'profesional' && personalAMostrar.length > 3) {
+                    personalAMostrar = personalAMostrar.sort((a, b) => a.id - b.id).slice(0, 3);
+                }
+
+                const selPersonal = document.getElementById('select-personal');
+                personalAMostrar.forEach(p => {
+                    let opt = document.createElement('option');
+                    opt.value = p.id;
+                    opt.innerText = `${p.nombre} (${p.especialidad})`;
+                    selPersonal.appendChild(opt);
+                });
+
+                let ahora = new Date();
+                let hoy = ahora.toISOString().split('T')[0];
+                let horas = String(ahora.getHours()).padStart(2, '0');
+                let minutos = String(ahora.getMinutes()).padStart(2, '0');
+                
+                document.getElementById('input-fecha').value = hoy;
+                document.getElementById('input-hora').value = `${horas}:${minutos}`;
+                
+                validarDisponibilidadHoraria();
+
+            } catch(e) {
+                console.error("Error al inicializar la reserva:", e);
+            }
+        }
+
+        function toggleBuscadorCita() {
+            let el = document.getElementById('seccion-buscador');
+            el.classList.toggle('hidden');
+        }
+
+        async function buscarCitasClienta() {
+            let wspNum = document.getElementById('input-buscar-whatsapp').value.trim();
+            const contenedor = document.getElementById('resultado-busqueda-citas');
+            contenedor.innerHTML = '';
+
+            if (wspNum.length < 7) { alert("Ingresa un número de WhatsApp válido."); return; }
+
+            try {
+                let res = await fetch(`/api/citas/cliente/${wspNum}?profesional_id=${datosNegocioGlobal.id}`);
+                let misCitas = await res.json();
+
+                if (misCitas.length === 0) {
+                    contenedor.innerHTML = '<p class="text-slate-500 font-bold text-center py-2">No se encontraron citas activas.</p>';
+                    return;
+                }
+
+                misCitas.forEach(c => {
+                    let badgeColor = c.estado === 'pendiente' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700';
+                    let simMoneda = datosNegocioGlobal.simbolo_moneda || '$';
+                    let div = document.createElement('div');
+                    div.className = "p-3 bg-white rounded-xl border border-slate-200 space-y-1";
+                    div.innerHTML = `
+                        <div class="flex justify-between items-center"><strong class="text-slate-900">${c.servicio}</strong><span class="px-2 py-0.5 rounded-full font-black uppercase text-[9px] ${badgeColor}">${c.estado}</span></div>
+                        <p class="text-slate-600">📅 Fecha: <strong>${c.fecha_hora_inicio}</strong></p>
+                        <p class="text-slate-600">💳 Monto: <strong>${simMoneda}${c.monto_pagado.toFixed(2)}</strong></p>
+                    `;
+                    contenedor.appendChild(div);
+                });
+            } catch(e) { alert("Error al buscar citas."); }
+        }
+
+        function actualizarPrecioYServicio() {
+            let sel = document.getElementById('select-servicio');
+            if (sel.selectedIndex <= 0) return;
+            let option = sel.options[sel.selectedIndex];
+            precioBaseServicioUsd = parseFloat(option.dataset.precio || 0);
+            let simMoneda = datosNegocioGlobal.simbolo_moneda || '$';
+
+            let precioFinalUsd = precioBaseServicioUsd;
+            let textoComisionExtra = "";
+
+            if (metodoPagoSeleccionadoVisual === 'internacional') {
+                if (pasarelaIntlSeleccionada === 'airtm') {
+                    precioFinalUsd = precioBaseServicioUsd * 1.01;
+                    textoComisionExtra = " (incl. +1% Airtm)";
+                } else if (pasarelaIntlSeleccionada === 'paypal') {
+                    precioFinalUsd = precioBaseServicioUsd * 1.04;
+                    textoComisionExtra = " (incl. +4% PayPal)";
+                }
+            }
+
+            document.getElementById('txt-monto-usd').innerText = `${simMoneda}${precioFinalUsd.toFixed(2)} USD${textoComisionExtra}`;
+
+            if (!datosNegocioGlobal.pais || datosNegocioGlobal.pais === 'VE') {
+                let montoBs = precioFinalUsd * tasaBcvGlobal;
+                document.getElementById('txt-monto-bs').innerText = `Bs. ${montoBs.toLocaleString('es-VE', {minimumFractionDigits: 2})}`;
+                document.getElementById('txt-tasa-ref').innerText = `Tasa oficial aplicada: Bs. ${tasaBcvGlobal.toLocaleString('es-VE', {minimumFractionDigits: 2})} / USD`;
+            }
+        }
+
+        async function validarDisponibilidadHoraria() {
+            const inputFecha = document.getElementById('input-fecha').value;
+            const inputHora = document.getElementById('input-hora').value;
+            const alerta = document.getElementById('alerta-horario');
+            const btnReservar = document.getElementById('btn-reservar');
+
+            if (!inputFecha || !inputHora) return;
+
+            let fechaObj = new Date(inputFecha + 'T00:00:00');
+            let diasSemana = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+            let nombreDiaSeleccionado = diasSemana[fechaObj.getDay()];
+
+            let horarioDia = horariosGlobal.find(h => h.dia_semana === nombreDiaSeleccionado);
+
+            if (!horarioDia || !horarioDia.activo) {
+                alerta.className = "p-3 rounded-2xl border bg-rose-50 border-rose-200 text-rose-700 font-bold text-xs text-center";
+                alerta.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-1"></i> El salón no labora los días <strong>${nombreDiaSeleccionado}</strong>.`;
+                alerta.classList.remove('hidden');
+                btnReservar.disabled = true;
+                btnReservar.classList.add('opacity-50', 'cursor-not-allowed');
+                return;
+            }
+
+            await verificarDisponibilidad();
+        }
+
+        async function verificarDisponibilidad() {
+            let servicioId = document.getElementById('select-servicio').value;
+            let personalId = document.getElementById('select-personal').value || null;
+            let fecha = document.getElementById('input-fecha').value;
+            let hora = document.getElementById('input-hora').value;
+            const alerta = document.getElementById('alerta-horario');
+            const btnReservar = document.getElementById('btn-reservar');
+
+            if (!servicioId || !fecha || !hora) return;
+
+            let datosVerif = {
+                profesional_id: datosNegocioGlobal.id,
+                servicio_id: parseInt(servicioId),
+                personal_id: personalId ? parseInt(personalId) : null,
+                fecha_hora_inicio_str: `${fecha} ${hora}`,
+                nombre_clienta: "Verificación",
+                whatsapp_clienta: "04120000000",
+                referencia_pago_movil: "12345678",
+                monto_pagado: 1.0,
+                tasa_bcv_actual: tasaBcvGlobal
+            };
+
+            try {
+                let res = await fetch('/api/citas/verificar-disponibilidad', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(datosVerif)
+                });
+
+                let data = await res.json();
+                personalAsignadoFinalId = data.personal_asignado_id;
+
+                if (!res.ok) {
+                    let mensajeError = typeof data.detail === 'string' ? data.detail : (typeof data.mensaje === 'string' ? data.mensaje : "Horario no disponible o fuera de la jornada laboral.");
+                    alerta.className = "p-3 rounded-2xl border bg-rose-50 border-rose-200 text-rose-700 font-bold text-xs text-center";
+                    alerta.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-1"></i> ${mensajeError}`;
+                    alerta.classList.remove('hidden');
+                    btnReservar.disabled = true;
+                    btnReservar.classList.add('opacity-50', 'cursor-not-allowed');
+                    return;
+                }
+
+                if (!data.disponible) {
+                    let mensajeError = typeof data.mensaje === 'string' ? data.mensaje : 'Horario no disponible';
+                    alerta.className = "p-3 rounded-2xl border bg-rose-50 border-rose-200 text-rose-700 font-bold text-xs text-center";
+                    alerta.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-1"></i> ${mensajeError}`;
+                    alerta.classList.remove('hidden');
+                    btnReservar.disabled = true;
+                    btnReservar.classList.add('opacity-50', 'cursor-not-allowed');
+                } else {
+                    let mensajeExito = typeof data.mensaje === 'string' ? data.mensaje : '¡Horario disponible!';
+                    alerta.className = "p-3 rounded-2xl border bg-emerald-50 border-emerald-200 text-emerald-700 font-bold text-xs text-center";
+                    alerta.innerHTML = `<i class="fa-solid fa-circle-check mr-1"></i> ${mensajeExito}`;
+                    alerta.classList.remove('hidden');
+                    btnReservar.disabled = false;
+                    btnReservar.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+            } catch(e) { console.error("Error al verificar disponibilidad", e); }
+        }
+
+        async function confirmarReserva(event) {
+            event.preventDefault();
+
+            let fecha = document.getElementById('input-fecha').value;
+            let selServicio = document.getElementById('select-servicio');
+            let servicioId = selServicio.value;
+            let nombreServicio = selServicio.options[selServicio.selectedIndex].dataset.nombre;
+            let personalId = document.getElementById('select-personal').value || null;
+            let hora = document.getElementById('input-hora').value;
+            let nombreClienta = document.getElementById('input-nombre').value;
+            
+            let codigoPais = document.getElementById('select-codigo-pais').value;
+            let numeroLimpio = document.getElementById('input-whatsapp').value;
+            let whatsappCompleto = codigoPais + numeroLimpio;
+            
+            let esVenezuela = (!datosNegocioGlobal.pais || datosNegocioGlobal.pais === 'VE');
+            let referencia = esVenezuela ? document.getElementById('input-referencia').value.trim() : document.getElementById('input-referencia-int').value.trim();
+
+            if (esVenezuela && metodoPagoSeleccionadoVisual === 'nacional' && referencia.length < 6) {
+                alert("Por favor ingresa una referencia de Pago Móvil válida.");
+                return;
+            }
+
+            if (!referencia) {
+                alert("Por favor ingresa el número de referencia o comprobante de pago.");
+                return;
+            }
+
+            let montoFinalUsd = precioBaseServicioUsd;
+            let etiquetaMetodoFinal = "Pago Móvil";
+
+            if (esVenezuela && metodoPagoSeleccionadoVisual === 'internacional') {
+                if (pasarelaIntlSeleccionada === 'binance') {
+                    montoFinalUsd = precioBaseServicioUsd;
+                    etiquetaMetodoFinal = "Binance Pay";
+                } else if (pasarelaIntlSeleccionada === 'airtm') {
+                    montoFinalUsd = precioBaseServicioUsd * 1.01;
+                    etiquetaMetodoFinal = "Airtm (+1%)";
+                } else if (pasarelaIntlSeleccionada === 'paypal') {
+                    montoFinalUsd = precioBaseServicioUsd * 1.04;
+                    etiquetaMetodoFinal = "PayPal (+4%)";
+                }
+            } else {
+                etiquetaMetodoFinal = "Pago Local / Intl";
+            }
+
+            let datosCita = {
+                profesional_id: datosNegocioGlobal.id,
+                servicio_id: parseInt(servicioId),
+                personal_id: personalId ? parseInt(personalId) : personalAsignadoFinalId,
+                fecha_hora_inicio_str: `${fecha} ${hora}`,
+                nombre_clienta: nombreClienta,
+                whatsapp_clienta: whatsappCompleto,
+                referencia_pago_movil: referencia,
+                monto_pagado: montoFinalUsd,
+                tasa_bcv_actual: tasaBcvGlobal
+            };
+
+            try {
+                let res = await fetch('/api/citas/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(datosCita)
+                });
+
+                let dataRes = await res.json();
+
+                if (res.ok) {
+                    let simMoneda = datosNegocioGlobal.simbolo_moneda || '$';
+
+                    document.getElementById('res-nombre').innerText = nombreClienta;
+                    document.getElementById('res-whatsapp').innerText = whatsappCompleto;
+                    document.getElementById('res-servicio').innerText = nombreServicio;
+                    document.getElementById('res-personal').innerText = personalId ? document.getElementById('select-personal').options[document.getElementById('select-personal').selectedIndex].text : "General";
+                    document.getElementById('res-fecha').innerText = `${fecha} a las ${hora}`;
+                    document.getElementById('res-ref').innerText = `${referencia} (${etiquetaMetodoFinal})`;
+                    document.getElementById('res-monto').innerText = `${simMoneda}${montoFinalUsd.toFixed(2)} ${datosNegocioGlobal.moneda || 'USD'}`;
+
+                    document.getElementById('vista-formulario').classList.add('hidden');
+                    document.getElementById('vista-exito').classList.remove('hidden');
+                } else {
+                    let errMensaje = typeof dataRes.detail === 'string' ? dataRes.detail : (typeof dataRes.mensaje === 'string' ? dataRes.mensaje : "Verifica los datos de la reserva.");
+                    alert("Error al reservar: " + errMensaje);
+                }
+            } catch(e) { alert("Error de conexión al procesar la reserva."); }
+        }
+
+        window.onload = inicializarReserva;
+    </script>
+
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/static/sw.js');
+      }
+    </script>
+</body>
+</html>

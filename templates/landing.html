@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="es" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bonnyn | La Plataforma #1 del Mundo para Automatizar Salones, Barberías y Spas</title>
+    
+    <!-- Configuración PWA y Enlace de Manifiesto -->
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#e11d48">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-white text-slate-900 font-sans antialiased selection:bg-pink-500 selection:text-white">
+
+    <header class="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-100 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-8 h-20 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-pink-50 text-pink-600 rounded-2xl flex items-center justify-center font-black text-xl border border-pink-100 shadow-inner">
+                    <i class="fa-solid fa-sparkles"></i>
+                </div>
+                <span class="text-lg font-black tracking-tight text-slate-900">Bonnyn<span class="text-pink-600">.</span></span>
+            </div>
+            
+            <nav class="hidden md:flex items-center gap-8 text-xs font-bold text-slate-600">
+                <a href="#caracteristicas" class="hover:text-pink-600 transition">Características</a>
+                <a href="#calculadora" class="hover:text-pink-600 transition">Calculadora</a>
+                <a href="#planes" class="hover:text-pink-600 transition">Precios & Planes</a>
+                <a href="#testimonios" class="hover:text-pink-600 transition">Casos de Éxito</a>
+                <a href="#faq" class="hover:text-pink-600 transition">FAQ</a>
+            </nav>
+
+            <div class="flex items-center gap-3">
+                <a href="/login" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-2xl text-xs transition">
+                    Iniciar Sesión
+                </a>
+                <a href="/registro" class="px-4 py-2 bg-pink-600 hover:bg-pink-500 text-white font-bold rounded-2xl text-xs transition shadow-lg shadow-pink-600/20 uppercase tracking-wider">
+                    Registrar Salón 🚀
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <section class="pt-32 pb-20 md:pt-44 md:pb-32 px-4 relative overflow-hidden bg-gradient-to-b from-pink-50/60 via-white to-white">
+        <div class="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] bg-pink-300/25 rounded-full blur-[150px] pointer-events-none"></div>
+        
+        <div class="max-w-5xl mx-auto text-center space-y-6 relative z-10">
+            <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-pink-50 border border-pink-200 text-pink-700 font-bold text-xs uppercase tracking-widest shadow-sm">
+                <i class="fa-solid fa-crown text-pink-600"></i> El Ecosistema Global #1 para la Belleza y el Bienestar
+            </div>
+            
+            <h1 class="text-4xl sm:text-7xl font-black text-slate-900 tracking-tight leading-tight">
+                Llena tu agenda y automatiza tus cobros por <span class="text-transparent bg-clip-text bg-gradient-to-r from-pink-600 to-rose-500">Pago Móvil e Internacional</span> al instante.
+            </h1>
+            
+            <p class="text-base sm:text-xl text-slate-600 max-w-3xl mx-auto font-medium leading-relaxed">
+                La plataforma SaaS líder para salones, barberías, spas y clínicas estéticas que gestiona reservas 24/7, sincroniza la tasa BCV oficial en tiempo real, controla comisiones de especialistas, stock de inventario y fichas clínicas inteligentes.
+            </p>
+            
+            <div class="flex flex-col sm:flex-row justify-center items-center gap-4 pt-4">
+                <a href="/registro" class="w-full sm:w-auto px-8 py-4 bg-pink-600 hover:bg-pink-500 text-white font-black rounded-2xl text-sm transition shadow-xl shadow-pink-600/30 uppercase tracking-wider">
+                    Empieza Gratis Hoy <i class="fa-solid fa-arrow-right ml-2"></i>
+                </a>
+                <a href="/reserva/studio-maria" target="_blank" class="w-full sm:w-auto px-8 py-4 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-2xl text-sm transition border border-slate-200 flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-eye text-pink-600"></i> Probar Demo de Reserva en Vivo
+                </a>
+            </div>
+
+            <div class="pt-6 flex flex-wrap justify-center items-center gap-6 text-xs text-slate-500 font-bold">
+                <span class="flex items-center gap-1.5"><i class="fa-solid fa-circle-check text-emerald-500"></i> Sin tarjeta de crédito requerida</span>
+                <span class="flex items-center gap-1.5"><i class="fa-solid fa-circle-check text-emerald-500"></i> Configuración guiada en 2 minutos</span>
+                <span class="flex items-center gap-1.5"><i class="fa-solid fa-circle-check text-emerald-500"></i> Soporte técnico prioritario</span>
+            </div>
+        </div>
+
+        <div class="max-w-6xl mx-auto mt-16 px-4">
+            <div class="bg-slate-900 rounded-3xl p-3 shadow-2xl border border-slate-800">
+                <div class="bg-slate-950 rounded-2xl p-6 md:p-10 text-white space-y-6">
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-800 pb-6">
+                        <div>
+                            <span class="text-pink-500 font-bold text-xs uppercase tracking-widest">Panel de Control en Tiempo Real</span>
+                            <h2 class="text-xl font-black text-white">Todo tu negocio sincronizado en una sola pantalla</h2>
+                        </div>
+                        <div class="flex gap-2 text-xs font-bold">
+                            <span class="px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full">🟢 API Conectada BCV</span>
+                            <span class="px-3 py-1 bg-pink-500/20 text-pink-400 border border-pink-500/30 rounded-full">⚡ Sockets Activos</span>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-left">
+                        <div class="bg-slate-900 p-5 rounded-2xl border border-slate-800 space-y-1">
+                            <p class="text-xs text-slate-400 uppercase font-bold">Ingresos del Día</p>
+                            <p class="text-2xl font-black text-pink-400">$450.00 <span class="text-xs text-emerald-400 font-normal">(+18%)</span></p>
+                        </div>
+                        <div class="bg-slate-900 p-5 rounded-2xl border border-slate-800 space-y-1">
+                            <p class="text-xs text-slate-400 uppercase font-bold">Citas Confirmadas Hoy</p>
+                            <p class="text-2xl font-black text-white">24 Citas</p>
+                        </div>
+                        <div class="bg-slate-900 p-5 rounded-2xl border border-slate-800 space-y-1">
+                            <p class="text-xs text-slate-400 uppercase font-bold">Especialistas Activos</p>
+                            <p class="text-2xl font-black text-white">3 Operando</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ESTADÍSTICAS GLOBALES -->
+    <section class="py-12 bg-pink-600 text-white">
+        <div class="max-w-7xl mx-auto px-4 grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+            <div class="space-y-1">
+                <p class="text-3xl sm:text-4xl font-black">+15,000</p>
+                <p class="text-xs text-pink-100 font-bold uppercase tracking-wider">Citas Procesadas al Mes</p>
+            </div>
+            <div class="space-y-1">
+                <p class="text-3xl sm:text-4xl font-black">99.9%</p>
+                <p class="text-xs text-pink-100 font-bold uppercase tracking-wider">Disponibilidad Cloud</p>
+            </div>
+            <div class="space-y-1">
+                <p class="text-3xl sm:text-4xl font-black">+450</p>
+                <p class="text-xs text-pink-100 font-bold uppercase tracking-wider">Salones y Barberías</p>
+            </div>
+            <div class="space-y-1">
+                <p class="text-3xl sm:text-4xl font-black">100%</p>
+                <p class="text-xs text-pink-100 font-bold uppercase tracking-wider">Automatizado con BCV</p>
+            </div>
+        </div>
+    </section>
+
+    <section id="caracteristicas" class="py-24 px-4 bg-slate-50 border-y border-slate-200/60">
+        <div class="max-w-7xl mx-auto space-y-16">
+            <div class="text-center space-y-3 max-w-2xl mx-auto">
+                <span class="text-pink-600 font-bold text-xs uppercase tracking-widest">Tecnología de Vanguardia</span>
+                <h2 class="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">Diseñado para hacer crecer tu salón sin estrés operativo</h2>
+                <p class="text-sm text-slate-600">Herramientas profesionales pensadas por expertos en software y gestión de belleza.</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div class="bg-white border border-slate-200/80 p-8 rounded-3xl space-y-4 shadow-sm hover:shadow-xl transition group">
+                    <div class="w-14 h-14 bg-pink-50 text-pink-600 rounded-2xl flex items-center justify-center text-2xl font-bold border border-pink-100 group-hover:bg-pink-600 group-hover:text-white transition">
+                        <i class="fa-solid fa-calendar-check"></i>
+                    </div>
+                    <h3 class="font-black text-slate-900 text-lg">Reservas Online 24/7</h3>
+                    <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">Tus clientas entran a tu enlace personalizado, eligen el servicio, seleccionan a su especialista favorita y agendan a cualquier hora del día sin llamadas ni demoras.</p>
+                </div>
+
+                <div class="bg-white border border-slate-200/80 p-8 rounded-3xl space-y-4 shadow-sm hover:shadow-xl transition group">
+                    <div class="w-14 h-14 bg-pink-50 text-pink-600 rounded-2xl flex items-center justify-center text-2xl font-bold border border-pink-100 group-hover:bg-pink-600 group-hover:text-white transition">
+                        <i class="fa-solid fa-calculator"></i>
+                    </div>
+                    <h3 class="font-black text-slate-900 text-lg">Tasa BCV & Pagos Móviles</h3>
+                    <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">El sistema calcula de manera exacta el monto en bolívares según la tasa oficial del Banco Central de Venezuela, mostrando los datos de tu Pago Móvil al instante.</p>
+                </div>
+
+                <div class="bg-white border border-slate-200/80 p-8 rounded-3xl space-y-4 shadow-sm hover:shadow-xl transition group">
+                    <div class="w-14 h-14 bg-pink-50 text-pink-600 rounded-2xl flex items-center justify-center text-2xl font-bold border border-pink-100 group-hover:bg-pink-600 group-hover:text-white transition">
+                        <i class="fa-solid fa-boxes-stacked"></i>
+                    </div>
+                    <h3 class="font-black text-slate-900 text-lg">Control de Inventario & Stock</h3>
+                    <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">Gestiona tus productos e insumos, define stock mínimo, recibe alertas de escasez y realiza ventas directas con descuento automático al completar citas.</p>
+                </div>
+
+                <div class="bg-white border border-slate-200/80 p-8 rounded-3xl space-y-4 shadow-sm hover:shadow-xl transition group">
+                    <div class="w-14 h-14 bg-pink-50 text-pink-600 rounded-2xl flex items-center justify-center text-2xl font-bold border border-pink-100 group-hover:bg-pink-600 group-hover:text-white transition">
+                        <i class="fa-solid fa-users-gear"></i>
+                    </div>
+                    <h3 class="font-black text-slate-900 text-lg">Control de Personal & Comisiones</h3>
+                    <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">Administra las sillas de tus especialistas, asigna porcentajes de comisión personalizados y calcula el neto del salón y de cada trabajador automáticamente.</p>
+                </div>
+
+                <div class="bg-white border border-slate-200/80 p-8 rounded-3xl space-y-4 shadow-sm hover:shadow-xl transition group">
+                    <div class="w-14 h-14 bg-pink-50 text-pink-600 rounded-2xl flex items-center justify-center text-2xl font-bold border border-pink-100 group-hover:bg-pink-600 group-hover:text-white transition">
+                        <i class="fa-solid fa-file-excel"></i>
+                    </div>
+                    <h3 class="font-black text-slate-900 text-lg">Exportación PDF y CSV</h3>
+                    <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">Genera reportes contables globales o filtrados por especialista en formato CSV con columnas separadas y PDF listos para imprimir para tus cierres de caja.</p>
+                </div>
+
+                <div class="bg-white border border-slate-200/80 p-8 rounded-3xl space-y-4 shadow-sm hover:shadow-xl transition group">
+                    <div class="w-14 h-14 bg-pink-50 text-pink-600 rounded-2xl flex items-center justify-center text-2xl font-bold border border-pink-100 group-hover:bg-pink-600 group-hover:text-white transition">
+                        <i class="fa-solid fa-map-location-dot"></i>
+                    </div>
+                    <h3 class="font-black text-slate-900 text-lg">Geolocalización & GPS</h3>
+                    <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">Integra la ubicación exacta de tu establecimiento en mapas interactivos Leaflet para que tus clientas lleguen fácilmente sin perderse.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CALCULADORA INTERACTIVA DE AHORRO Y COMISIONES -->
+    <section id="calculadora" class="py-24 px-4 bg-white">
+        <div class="max-w-4xl mx-auto bg-gradient-to-br from-slate-900 to-slate-950 text-white rounded-3xl p-8 sm:p-12 shadow-2xl border border-slate-800 space-y-8">
+            <div class="text-center space-y-2">
+                <span class="text-pink-400 font-bold text-xs uppercase tracking-widest">Calcula tu Crecimiento</span>
+                <h2 class="text-2xl sm:text-3xl font-black text-white">Calculadora de Productividad Bonnyn</h2>
+                <p class="text-xs text-slate-400">Estima cuántas citas y qué ingresos generará tu salón al mes.</p>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 bg-slate-900 p-6 rounded-2xl border border-slate-800 text-xs">
+                <div class="space-y-2">
+                    <label class="block font-bold text-slate-300">Número de Especialistas en tu Salón:</label>
+                    <input type="range" id="calc-personal" min="1" max="10" value="2" oninput="calcularProyeccion()" class="w-full accent-pink-500 cursor-pointer">
+                    <p class="text-pink-400 font-bold text-sm"><span id="val-personal">2</span> Especialistas</p>
+                </div>
+                <div class="space-y-2">
+                    <label class="block font-bold text-slate-300">Citas promedio por día por especialista:</label>
+                    <input type="range" id="calc-citas" min="2" max="15" value="5" oninput="calcularProyeccion()" class="w-full accent-pink-500 cursor-pointer">
+                    <p class="text-pink-400 font-bold text-sm"><span id="val-citas">5</span> Citas / día</p>
+                </div>
+            </div>
+
+            <div class="bg-pink-600/20 border border-pink-500/40 p-6 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-4 text-center sm:text-left">
+                <div>
+                    <p class="text-xs uppercase font-bold text-pink-300">Proyección de Ingresos Brutos Mensuales Estimados</p>
+                    <p class="text-3xl sm:text-4xl font-black text-white mt-1" id="res-ingresos">$2,250.00 USD</p>
+                </div>
+                <a href="/registro" class="px-6 py-3 bg-pink-600 hover:bg-pink-500 text-white font-black rounded-xl text-xs uppercase tracking-wider transition shadow-lg">
+                    Quiero estos ingresos 🚀
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- SECCIÓN DE PLANES Y PRECIOS -->
+    <section id="planes" class="py-24 px-4 bg-slate-50 border-t border-slate-200/60">
+        <div class="max-w-7xl mx-auto space-y-16">
+            <div class="text-center space-y-3 max-w-2xl mx-auto">
+                <span class="text-pink-600 font-bold text-xs uppercase tracking-widest">Inversión Inteligente</span>
+                <h2 class="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">Planes transparentes adaptados a tu crecimiento</h2>
+                <p class="text-sm text-slate-600">Sin contratos forzosos. Cancela o cambia de plan cuando lo necesites.</p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
+                <div class="bg-white border border-slate-200 p-8 rounded-3xl space-y-6 flex flex-col justify-between shadow-sm">
+                    <div class="space-y-4">
+                        <span class="px-3 py-1 bg-slate-100 text-slate-700 font-bold text-[10px] uppercase rounded-full tracking-wider">🌱 Inicial</span>
+                        <h3 class="text-2xl font-black text-slate-900">Plan Gratuito</h3>
+                        <p class="text-4xl font-black text-slate-900">$0 <span class="text-xs text-slate-500 font-normal">/ por mes</span></p>
+                        <p class="text-xs text-slate-500">Ideal para salones que inician o desean automatizar sus reservas principales.</p>
+                        <ul class="space-y-3 text-xs text-slate-700 pt-2 border-t border-slate-100">
+                            <li class="flex items-center gap-2"><i class="fa-solid fa-check text-pink-600"></i> Hasta <strong>15 citas mensuales</strong></li>
+                            <li class="flex items-center gap-2"><i class="fa-solid fa-check text-pink-600"></i> <strong>1 especialista</strong> activo</li>
+                            <li class="flex items-center gap-2"><i class="fa-solid fa-check text-pink-600"></i> <strong>3 servicios</strong> configurados</li>
+                            <li class="flex items-center gap-2"><i class="fa-solid fa-check text-pink-600"></i> Enlace público personalizado</li>
+                            <li class="flex items-center gap-2"><i class="fa-solid fa-check text-pink-600"></i> Tasa BCV automática</li>
+                        </ul>
+                    </div>
+                    <a href="/registro" class="w-full py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-900 font-bold rounded-2xl text-xs transition text-center uppercase">Empezar Gratis</a>
+                </div>
+
+                <div class="bg-white border-2 border-pink-500 p-8 rounded-3xl space-y-6 flex flex-col justify-between relative shadow-2xl shadow-pink-500/15">
+                    <div class="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-pink-600 text-white text-[10px] font-black uppercase px-4 py-1 rounded-full tracking-wider shadow">⭐ Más Popular</div>
+                    <div class="space-y-4">
+                        <span class="px-3 py-1 bg-pink-50 text-pink-700 font-bold text-[10px] uppercase rounded-full tracking-wider border border-pink-200">🚀 Crecimiento</span>
+                        <h3 class="text-2xl font-black text-slate-900">Plan Profesional</h3>
+                        <p class="text-4xl font-black text-pink-600">$15 <span class="text-xs text-slate-500 font-normal">/ por mes</span></p>
+                        <p class="text-xs text-slate-500">Diseñado para salones en expansión que requieren control operativo avanzado.</p>
+                        <ul class="space-y-3 text-xs text-slate-700 pt-2 border-t border-pink-100">
+                            <li class="flex items-center gap-2"><i class="fa-solid fa-check text-pink-600"></i> <strong>Citas ilimitadas</strong> mensuales</li>
+                            <li class="flex items-center gap-2"><i class="fa-solid fa-check text-pink-600"></i> Hasta <strong>3 especialistas</strong> activos</li>
+                            <li class="flex items-center gap-2"><i class="fa-solid fa-check text-pink-600"></i> Hasta <strong>8 servicios</strong> activos</li>
+                            <li class="flex items-center gap-2"><i class="fa-solid fa-check text-pink-600"></i> Módulo de bloquear días y vacaciones</li>
+                            <li class="flex items-center gap-2"><i class="fa-solid fa-check text-pink-600"></i> Reportes contables globales (PDF / CSV)</li>
+                        </ul>
+                    </div>
+                    <a href="/registro" class="w-full py-3.5 bg-pink-600 hover:bg-pink-500 text-white font-black rounded-2xl text-xs transition text-center uppercase shadow-lg shadow-pink-600/30">Seleccionar Plan Profesional</a>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 text-white p-8 rounded-3xl space-y-6 flex flex-col justify-between shadow-xl">
+                    <div class="space-y-4">
+                        <span class="px-3 py-1 bg-pink-600 text-white font-black text-[10px] uppercase rounded-full tracking-wider">👑 Elite</span>
+                        <h3 class="text-2xl font-black text-white">Plan Elite</h3>
+                        <p class="text-4xl font-black text-pink-400">$29 <span class="text-xs text-slate-400 font-normal">/ por mes</span></p>
+                        <p class="text-xs text-slate-400">Solución integral sin restricciones para salones líderes con alto volumen.</p>
+                        <ul class="space-y-3 text-xs text-slate-300 pt-2 border-t border-slate-800">
+                            <li class="flex items-center gap-2"><i class="fa-solid fa-check text-pink-500"></i> <strong>Especialistas y servicios ilimitados</strong></li>
+                            <li class="flex items-center gap-2"><i class="fa-solid fa-check text-pink-500"></i> <strong>Vitrina Destacada</strong> en página principal</li>
+                            <li class="flex items-center gap-2"><i class="fa-solid fa-check text-pink-500"></i> <strong>Control de Inventario & Stock</strong> (Alertas mínimas)</li>
+                            <li class="flex items-center gap-2"><i class="fa-solid fa-check text-pink-500"></i> Registro de Gastos, Insumos & Contabilidad Neta</li>
+                            <li class="flex items-center gap-2"><i class="fa-solid fa-check text-pink-500"></i> Reportes individuales y Soporte VIP 24/7</li>
+                        </ul>
+                    </div>
+                    <a href="/registro" class="w-full py-3.5 bg-pink-600 hover:bg-pink-500 text-white font-black rounded-2xl text-xs transition text-center uppercase shadow-lg">Seleccionar Plan Elite</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- TESTIMONIOS Y CASOS DE ÉXITO -->
+    <section id="testimonios" class="py-24 px-4 bg-white">
+        <div class="max-w-7xl mx-auto space-y-16">
+            <div class="text-center space-y-3 max-w-2xl mx-auto">
+                <span class="text-pink-600 font-bold text-xs uppercase tracking-widest">Testimonios Reales</span>
+                <h2 class="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">Lo que dicen los dueños de salones que ya usan Bonnyn</h2>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div class="bg-slate-50 border border-slate-200/80 p-8 rounded-3xl space-y-4 shadow-sm">
+                    <div class="flex text-amber-400 text-sm gap-1">
+                        <i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i>
+                    </div>
+                    <p class="text-xs text-slate-700 leading-relaxed font-medium">"Desde que implementamos Bonnyn, nuestras clientas agendan solas por la medianoche y el cálculo de la tasa BCV nos ahorra horas de confusión con los pagos móviles. ¡Una maravilla!"</p>
+                    <div class="flex items-center gap-3 pt-2">
+                        <div class="w-10 h-10 rounded-full bg-pink-600 text-white font-bold flex items-center justify-center text-sm">SM</div>
+                        <div>
+                            <p class="font-bold text-slate-900 text-xs">Studio Maria Nails</p>
+                            <p class="text-[10px] text-slate-500">Cumaná, Venezuela</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 border border-slate-200/80 p-8 rounded-3xl space-y-4 shadow-sm">
+                    <div class="flex text-amber-400 text-sm gap-1">
+                        <i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i>
+                    </div>
+                    <p class="text-xs text-slate-700 leading-relaxed font-medium">"El módulo de comisiones y fichas clínicas para nuestro centro de estética es exactamente lo que buscábamos. Organizó nuestro personal y finanzas al 100%."</p>
+                    <div class="flex items-center gap-3 pt-2">
+                        <div class="w-10 h-10 rounded-full bg-rose-600 text-white font-bold flex items-center justify-center text-sm">CE</div>
+                        <div>
+                            <p class="font-bold text-slate-900 text-xs">Estética & Spa C.A.</p>
+                            <p class="text-[10px] text-slate-500">Caracas, Venezuela</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 border border-slate-200/80 p-8 rounded-3xl space-y-4 shadow-sm">
+                    <div class="flex text-amber-400 text-sm gap-1">
+                        <i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i>
+                    </div>
+                    <p class="text-xs text-slate-700 leading-relaxed font-medium">"La interfaz es rapidísima, funciona perfecto en el teléfono y mis barberos están felices porque cada quien ve sus citas del día sin enredos. 100 recomendado."</p>
+                    <div class="flex items-center gap-3 pt-2">
+                        <div class="w-10 h-10 rounded-full bg-slate-800 text-white font-bold flex items-center justify-center text-sm">GB</div>
+                        <div>
+                            <p class="font-bold text-slate-900 text-xs">The Gentleman Barber</p>
+                            <p class="text-[10px] text-slate-500">Lechería, Venezuela</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- PREGUNTAS FRECUENTES (FAQ) -->
+    <section id="faq" class="py-24 px-4 bg-slate-50 border-t border-slate-200/60">
+        <div class="max-w-4xl mx-auto space-y-12">
+            <div class="text-center space-y-3">
+                <span class="text-pink-600 font-bold text-xs uppercase tracking-widest">Resolviendo Dudas</span>
+                <h2 class="text-3xl font-black text-slate-900 tracking-tight">Preguntas Frecuentes</h2>
+                <p class="text-sm text-slate-600">Todo lo que necesitas saber sobre el funcionamiento de Bonnyn.</p>
+            </div>
+
+            <div class="space-y-4 text-xs">
+                <div class="bg-white border border-slate-200 p-6 rounded-2xl space-y-2 shadow-sm">
+                    <h3 class="font-bold text-slate-900 text-sm">¿Mis clientas necesitan descargar una aplicación móvil?</h3>
+                    <p class="text-slate-600 leading-relaxed">No, para nada. Tus clientas solo hacen clic en tu enlace personalizado de Bonnyn (ej: <code>bonnyn.com/reserva/tu-salon</code>) desde cualquier teléfono o computadora y reservan en segundos sin instalar nada.</p>
+                </div>
+
+                <div class="bg-white border border-slate-200 p-6 rounded-2xl space-y-2 shadow-sm">
+                    <h3 class="font-bold text-slate-900 text-sm">¿Cómo funciona la actualización de la tasa del dólar BCV?</h3>
+                    <p class="text-slate-600 leading-relaxed">El sistema consulta de forma automática la tasa oficial del Banco Central de Venezuela, garantizando que los montos en bolívares que pagan tus clientas por Pago Móvil sean 100% exactos al momento de la reserva.</p>
+                </div>
+
+                <div class="bg-white border border-slate-200 p-6 rounded-2xl space-y-2 shadow-sm">
+                    <h3 class="font-bold text-slate-900 text-sm">¿Puedo cambiar de plan gratuito a profesional más adelante?</h3>
+                    <p class="text-slate-600 leading-relaxed">¡Sí, por supuesto! Puedes iniciar con el plan gratuito y actualizar al Plan Profesional o Elite en cualquier momento desde tu panel de control con un par de clics.</p>
+                </div>
+
+                <div class="bg-white border border-slate-200 p-6 rounded-2xl space-y-2 shadow-sm">
+                    <h3 class="font-bold text-slate-900 text-sm">¿Bonnyn maneja o custodia el dinero de mis cobros?</h3>
+                    <p class="text-slate-600 leading-relaxed">No. Bonnyn opera bajo un modelo SaaS B2B tecnológico. Los pagos van directo de tu clienta a tus cuentas bancarias o Pago Móvil de manera 100% autónoma y segura.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer class="bg-white border-t border-slate-200 py-12 px-4 text-xs">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6 text-slate-500">
+            <div class="flex items-center gap-3">
+                <span class="text-slate-900 font-black text-sm">Bonnyn<span class="text-pink-600">.</span></span>
+                <span>© 2026 • Todos los derechos reservados.</span>
+            </div>
+            <div class="flex items-center gap-6 font-semibold">
+                <a href="/login" class="hover:text-slate-950 transition">Acceso Socios</a>
+                <a href="/registro" class="hover:text-slate-950 transition">Registrar Salón</a>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        function calcularProyeccion() {
+            let personal = parseInt(document.getElementById('calc-personal').value);
+            let citas = parseInt(document.getElementById('calc-citas').value);
+            
+            document.getElementById('val-personal').innerText = personal;
+            document.getElementById('val-citas').innerText = citas;
+
+            // Supuesto promedio por cita $15 USD, 22 días laborables al mes
+            let ingresosTotal = personal * citas * 15 * 22;
+            document.getElementById('res-ingresos').innerText = `$${ingresosTotal.toLocaleString('en-US', {minimumFractionDigits: 2})} USD`;
+        }
+
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/static/sw.js');
+        }
+    </script>
+</body>
+</html>

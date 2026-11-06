@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acceso Profesionales | Bonnyn</title>
+    
+    <!-- Configuración PWA y Enlace de Manifiesto -->
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#e11d48">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-slate-50 text-slate-900 font-sans antialiased min-h-screen flex items-center justify-center p-4">
+
+    <!-- TARJETA DE LOGIN PRINCIPAL -->
+    <div id="card-login" class="bg-white border border-slate-200 p-8 rounded-3xl w-full max-w-sm space-y-6 shadow-xl text-center">
+        <div class="space-y-2">
+            <a href="/" class="inline-block transition hover:opacity-80">
+                <span class="px-3.5 py-1 rounded-full bg-pink-50 text-pink-600 font-black text-xs uppercase tracking-widest border border-pink-200">BONNYN</span>
+            </a>
+            <div class="w-12 h-12 bg-pink-50 text-pink-600 rounded-2xl flex items-center justify-center mx-auto text-xl font-bold border border-pink-100 mt-4">
+                <i class="fa-solid fa-lock-open"></i>
+            </div>
+            <h1 class="text-xl font-black text-slate-900">Acceso Profesionales</h1>
+            <p class="text-xs text-slate-500">Ingresa a tu panel de control y agenda</p>
+        </div>
+
+        <form onsubmit="iniciarSesion(event)" class="space-y-4 text-xs text-left">
+            <div>
+                <label class="block text-slate-700 font-bold mb-1">Correo Electrónico *</label>
+                <input type="email" id="correo" required placeholder="tu.correo@email.com" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:border-pink-600 focus:bg-white outline-none transition">
+            </div>
+
+            <div>
+                <div class="flex justify-between items-center mb-1">
+                    <label class="block text-slate-700 font-bold">Contraseña *</label>
+                    <button type="button" onclick="mostrarSeccionRecuperacion()" class="text-pink-600 hover:underline font-semibold text-[11px]">¿Olvidaste tu contraseña?</button>
+                </div>
+                <input type="password" id="password" required placeholder="••••••••" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:border-pink-600 focus:bg-white outline-none transition">
+            </div>
+
+            <!-- CHECKBOX DE RECORDAR CORREO -->
+            <div class="flex items-center gap-2 pt-1">
+                <input type="checkbox" id="recordar-correo" class="w-4 h-4 text-pink-600 rounded border-slate-300 focus:ring-pink-500 cursor-pointer">
+                <label for="recordar-correo" class="text-slate-600 font-medium cursor-pointer select-none">Recordar mi correo electrónico</label>
+            </div>
+
+            <button type="submit" class="w-full bg-pink-600 hover:bg-pink-500 text-white font-bold p-3.5 rounded-xl uppercase transition tracking-wider shadow-lg shadow-pink-600/20 text-center">
+                Entrar a Mi Panel <i class="fa-solid fa-arrow-right ml-1"></i>
+            </button>
+        </form>
+
+        <div class="text-xs text-slate-600 pt-2 border-t border-slate-200">
+            ¿Aún no tienes cuenta? <a href="/registro" class="text-pink-600 font-bold hover:underline">Regístrate aquí</a>
+        </div>
+    </div>
+
+    <!-- TARJETA DE RECUPERACIÓN DE CONTRASEÑA -->
+    <div id="card-recuperacion" class="hidden bg-white border border-slate-200 p-8 rounded-3xl w-full max-w-sm space-y-6 shadow-xl text-center">
+        <div class="space-y-2">
+            <div class="w-12 h-12 bg-pink-50 text-pink-600 rounded-2xl flex items-center justify-center mx-auto text-xl font-bold border border-pink-100">
+                <i class="fa-solid fa-key"></i>
+            </div>
+            <h1 class="text-xl font-black text-slate-900">Recuperar Contraseña</h1>
+            <p id="recuperacion-sub" class="text-xs text-slate-500">Ingresa tu correo para enviarte un código de verificación</p>
+        </div>
+
+        <div id="alerta-bloqueo" class="hidden p-3 bg-rose-50 border border-rose-200 rounded-2xl text-[11px] text-rose-700 font-bold">
+            <i class="fa-solid fa-triangle-exclamation mr-1"></i> <span id="msg-bloqueo">Demasiados intentos fallidos. Cuenta suspendida temporalmente por 5 minutos.</span>
+        </div>
+
+        <!-- PASO 1: ENVIAR CORREO -->
+        <div id="step-correo" class="space-y-4 text-xs text-left">
+            <div>
+                <label class="block text-slate-700 font-bold mb-1">Correo Electrónico Registrado *</label>
+                <input type="email" id="recu-correo" placeholder="tu.correo@email.com" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:border-pink-600 focus:bg-white outline-none transition">
+            </div>
+            <button type="button" id="btn-enviar-codigo" onclick="enviarCodigoRecuperacion()" class="w-full bg-pink-600 hover:bg-pink-500 text-white font-bold p-3.5 rounded-xl uppercase transition tracking-wider shadow-lg shadow-pink-600/20 text-center">
+                Enviar Código <i class="fa-solid fa-paper-plane ml-1"></i>
+            </button>
+            <button type="button" onclick="volverAlLogin()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold p-2.5 rounded-xl transition text-center">
+                Volver al Login
+            </button>
+        </div>
+
+        <!-- PASO 2: INGRESAR CÓDIGO Y NUEVA CONTRASEÑA -->
+        <div id="step-codigo" class="hidden space-y-4 text-xs text-left">
+            <div>
+                <label class="block text-slate-700 font-bold mb-1">Código de Verificación (6 dígitos) *</label>
+                <input type="text" id="recu-codigo" maxlength="6" placeholder="123456" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-bold tracking-widest text-center text-lg focus:border-pink-600 focus:bg-white outline-none transition">
+            </div>
+
+            <!-- CONTADOR DE 80 SEGUNDOS Y REENVÍO -->
+            <div class="flex justify-between items-center bg-pink-50/70 p-2.5 rounded-xl border border-pink-100">
+                <span class="text-[11px] font-bold text-slate-700" id="timer-txt">⏳ Tiempo restante: <strong id="timer-seg" class="text-pink-600 text-sm">80s</strong></span>
+                <button type="button" id="btn-reenviar" disabled onclick="reenviarCodigo()" class="px-2.5 py-1 bg-pink-600 text-white font-bold rounded-lg text-[10px] opacity-50 cursor-not-allowed transition">Reenviar Código</button>
+            </div>
+
+            <div>
+                <label class="block text-slate-700 font-bold mb-1">Nueva Contraseña *</label>
+                <input type="password" id="recu-password" placeholder="••••••••" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:border-pink-600 focus:bg-white outline-none transition">
+            </div>
+            <button type="button" id="btn-cambiar-pass" onclick="verificarYCambiarContrasena()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold p-3.5 rounded-xl uppercase transition tracking-wider shadow-lg shadow-emerald-600/20 text-center">
+                Cambiar Contraseña <i class="fa-solid fa-check ml-1"></i>
+            </button>
+            <button type="button" onclick="volverAlLogin()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold p-2.5 rounded-xl transition text-center">
+                Cancelar
+            </button>
+        </div>
+    </div>
+
+    <script>
+        let correoRecuperacionGlobal = '';
+        let timerInterval = null;
+        let tiempoRestante = 80;
+
+        // Cargar correo guardado al abrir la página[cite: 23, 24]
+        window.onload = function() {
+            let correoGuardado = localStorage.getItem('bonnyn_correo_recordado');
+            if (correoGuardado) {
+                document.getElementById('correo').value = correoGuardado;
+                document.getElementById('recordar-correo').checked = true;
+            }
+        };
+
+        async function iniciarSesion(event) {
+            event.preventDefault();
+            let correoVal = document.getElementById('correo').value;
+            let passwordVal = document.getElementById('password').value;
+            let recordarCheck = document.getElementById('recordar-correo').checked;
+
+            // Manejo de memoria para recordar correo[cite: 23, 24]
+            if (recordarCheck) {
+                localStorage.setItem('bonnyn_correo_recordado', correoVal);
+            } else {
+                localStorage.removeItem('bonnyn_correo_recordado');
+            }
+
+            let datos = {
+                correo: correoVal,
+                password: passwordVal
+            };
+
+            let res = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include', // ¡Crucial! Permite recibir y almacenar la cookie HttpOnly en el navegador
+                body: JSON.stringify(datos)
+            });
+
+            let r = await res.json();
+            if (res.ok) {
+                localStorage.setItem('profesional_id', r.profesional_id);
+                localStorage.setItem('slug_negocio', r.slug);
+                window.location.href = '/admin';
+            } else {
+                alert("Error: " + (r.detail || "Credenciales incorrectas"));
+            }
+        }
+
+        function mostrarSeccionRecuperacion() {
+            document.getElementById('card-login').classList.add('hidden');
+            document.getElementById('card-recuperacion').classList.remove('hidden');
+            document.getElementById('step-correo').classList.remove('hidden');
+            document.getElementById('step-codigo').classList.add('hidden');
+            document.getElementById('alerta-bloqueo').classList.add('hidden');
+        }
+
+        function volverAlLogin() {
+            detenerTimer();
+            document.getElementById('card-recuperacion').classList.add('hidden');
+            document.getElementById('card-login').classList.remove('hidden');
+            document.getElementById('recu-correo').value = '';
+            document.getElementById('recu-codigo').value = '';
+            document.getElementById('recu-password').value = '';
+            document.getElementById('alerta-bloqueo').classList.add('hidden');
+        }
+
+        function iniciarTimer() {
+            detenerTimer();
+            tiempoRestante = 80;
+            const btnReenviar = document.getElementById('btn-reenviar');
+            const timerSeg = document.getElementById('timer-seg');
+
+            btnReenviar.disabled = true;
+            btnReenviar.classList.add('opacity-50', 'cursor-not-allowed');
+
+            timerSeg.innerText = `${tiempoRestante}s`;
+
+            timerInterval = setInterval(() => {
+                tiempoRestante--;
+                if (tiempoRestante <= 0) {
+                    detenerTimer();
+                    timerSeg.innerText = 'Expirado';
+                    btnReenviar.disabled = false;
+                    btnReenviar.classList.remove('opacity-50', 'cursor-not-allowed');
+                } else {
+                    timerSeg.innerText = `${tiempoRestante}s`;
+                }
+            }, 1000);
+        }
+
+        function detenerTimer() {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+        }
+
+        async function enviarCodigoRecuperacion() {
+            let correo = document.getElementById('recu-correo').value.trim();
+            if (!correo) {
+                alert("Por favor ingresa tu correo electrónico.");
+                return;
+            }
+
+            document.getElementById('alerta-bloqueo').classList.add('hidden');
+
+            let res = await fetch('/api/recuperar-password/solicitar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ correo: correo })
+            });
+
+            let r = await res.json();
+            if (res.ok) {
+                correoRecuperacionGlobal = correo;
+                alert("¡Código enviado! Revisa tu bandeja de entrada o correo no deseado.");
+                document.getElementById('step-correo').classList.add('hidden');
+                document.getElementById('step-codigo').classList.remove('hidden');
+                document.getElementById('recuperacion-sub').innerText = `Ingresa el código de 6 dígitos enviado a ${correo}`;
+                iniciarTimer();
+            } else {
+                if (res.status === 429) {
+                    mostrarBloqueoTemporal(r.detail);
+                } else {
+                    alert("Error: " + (r.detail || "No se pudo enviar el código."));
+                }
+            }
+        }
+
+        async function reenviarCodigo() {
+            if (!correoRecuperacionGlobal) return;
+            await enviarCodigoRecuperacion();
+        }
+
+        async function verificarYCambiarContrasena() {
+            let codigo = document.getElementById('recu-codigo').value.trim();
+            let nuevaPassword = document.getElementById('recu-password').value.trim();
+
+            if (!codigo || codigo.length < 6) {
+                alert("Ingresa el código de 6 dígitos válido.");
+                return;
+            }
+            if (!nuevaPassword || nuevaPassword.length < 6) {
+                alert("La contraseña nueva debe tener al menos 6 caracteres.");
+                return;
+            }
+
+            document.getElementById('alerta-bloqueo').classList.add('hidden');
+
+            let res = await fetch('/api/recuperar-password/verificar-y-cambiar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    correo: correoRecuperacionGlobal, 
+                    codigo: codigo, 
+                    nueva_password: nuevaPassword 
+                })
+            });
+
+            let r = await res.json();
+            if (res.ok) {
+                alert("¡Contraseña actualizada con éxito! Ahora puedes iniciar sesión.");
+                volverAlLogin();
+            } else {
+                if (res.status === 429) {
+                    mostrarBloqueoTemporal(r.detail);
+                } else {
+                    alert("Error: " + (r.detail || "Código incorrecto o expirado."));
+                }
+            }
+        }
+
+        function mostrarBloqueoTemporal(mensaje) {
+            detenerTimer();
+            const divBloqueo = document.getElementById('alerta-bloqueo');
+            const msgBloqueo = document.getElementById('msg-bloqueo');
+            msgBloqueo.innerText = mensaje;
+            divBloqueo.classList.remove('hidden');
+
+            document.getElementById('btn-cambiar-pass').disabled = true;
+            document.getElementById('btn-cambiar-pass').classList.add('opacity-50', 'cursor-not-allowed');
+            document.getElementById('btn-enviar-codigo').disabled = true;
+            document.getElementById('btn-enviar-codigo').classList.add('opacity-50', 'cursor-not-allowed');
+        }
+    </script>
+</body>
+</html>

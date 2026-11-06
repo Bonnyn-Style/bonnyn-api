@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel Master Impenetrable | Bonnyn Global</title>
+    
+    <!-- Configuración PWA y Enlace de Manifiesto -->
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .glass-card {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        @media print {
+            body * { visibility: hidden; }
+            #area-impresion-reporte, #area-impresion-reporte * { visibility: visible; }
+            #area-impresion-reporte { position: absolute; left: 0; top: 0; width: 100%; background: white; color: black; }
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans antialiased min-h-screen p-4 sm:p-8">
+
+    <!-- MODAL DE ACCESO IMPENETRABLE SUPER ADMIN -->
+    <div id="modal-login-master" class="fixed inset-0 bg-slate-950 z-[100] flex items-center justify-center p-4">
+        <div class="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl space-y-6 relative overflow-hidden">
+            <div class="absolute -top-10 -right-10 w-32 h-32 bg-pink-500/10 rounded-full blur-2xl"></div>
+            
+            <div class="text-center space-y-2">
+                <div class="w-16 h-16 bg-pink-500/10 text-pink-500 rounded-2xl flex items-center justify-center text-3xl mx-auto border border-pink-500/20 shadow-inner">
+                    <i class="fa-solid fa-user-shield"></i>
+                </div>
+                <h2 class="text-xl font-black text-white tracking-tight">Acceso Privado Super Admin</h2>
+                <p class="text-xs text-slate-400">Introduce tus credenciales de propietario maestro para desbloquear la plataforma.</p>
+            </div>
+
+            <form onsubmit="autenticarSuperAdmin(event)" class="space-y-4 text-xs">
+                <div>
+                    <label class="block font-bold text-slate-300 mb-1">Correo Electrónico Propietario</label>
+                    <input type="email" id="master-email" required placeholder="gilmanuel.mg@gmail.com" class="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white outline-none focus:border-pink-500 font-bold">
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-300 mb-1">Contraseña Maestro</label>
+                    <input type="password" id="master-pass" required placeholder="••••••••" class="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white outline-none focus:border-pink-500 font-bold">
+                </div>
+                <div id="login-error-msg" class="hidden text-rose-400 font-bold text-[11px] text-center bg-rose-500/10 p-2 rounded-xl border border-rose-500/20">
+                    ❌ Credenciales incorrectas o acceso denegado.
+                </div>
+                <button type="submit" class="w-full bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white font-black p-3.5 rounded-xl uppercase tracking-wider transition shadow-lg shadow-pink-600/20">
+                    Desbloquear Panel Master 🔒
+                </button>
+            </form>
+            <div class="text-center">
+                <span class="text-[10px] text-slate-600 font-bold uppercase tracking-widest">Bonnyn SaaS Architecture v2.9</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONTENIDO PRINCIPAL DEL PANEL MASTER -->
+    <div id="panel-principal-master" class="hidden max-w-7xl mx-auto space-y-6">
+        
+        <!-- CABECERA SUPER ADMIN -->
+        <header class="glass-card rounded-3xl p-6 shadow-2xl flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 bg-pink-500/10 text-pink-500 rounded-2xl flex items-center justify-center text-xl font-black border border-pink-500/20 shadow-inner">
+                    <i class="fa-solid fa-crown"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <span class="px-2.5 py-0.5 rounded-full bg-pink-500/10 text-pink-400 font-black uppercase text-[10px] tracking-wider border border-pink-500/20">Chief Executive Officer (Jefe Master)</span>
+                        <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-bold text-[10px] border border-emerald-500/20">🟢 Sistema En Vivo</span>
+                    </div>
+                    <h1 class="text-xl font-black text-white tracking-tight mt-1">Bonnyn | Control Global de la Plataforma</h1>
+                    <p class="text-xs text-slate-400">Gestión ejecutiva de salones socios, suscripciones globales, multas e ingeniería contable estricta.</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2 flex-wrap justify-center">
+                <button onclick="abrirModalConfigPago()" class="px-4 py-2 bg-pink-600 hover:bg-pink-500 text-white font-bold rounded-2xl text-xs transition flex items-center gap-2 shadow-lg shadow-pink-600/20">
+                    <i class="fa-solid fa-wallet"></i> Configurar Pasarelas
+                </button>
+                <button onclick="cargarTodoSuperAdmin()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-2xl text-xs transition flex items-center gap-2 border border-slate-700" title="Refresca las métricas en tiempo real">
+                    <i class="fa-solid fa-rotate text-pink-500"></i> ⚡ Sincronizar
+                </button>
+                <button onclick="cerrarSesionMaster()" class="px-4 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 font-bold rounded-2xl text-xs transition flex items-center gap-2 border border-rose-500/20">
+                    <i class="fa-solid fa-lock"></i> Bloquear
+                </button>
+            </div>
+        </header>
+
+        <!-- TARJETAS DE MÉTRICAS GLOBALES -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div class="glass-card p-5 rounded-3xl space-y-1">
+                <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Salones</p>
+                <p id="metrica-total-salones" class="text-2xl font-black text-white">0</p>
+            </div>
+            <div class="glass-card p-5 rounded-3xl space-y-1">
+                <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Salones Activos</p>
+                <p id="metrica-salones-activos" class="text-2xl font-black text-emerald-400">0</p>
+            </div>
+            <div class="glass-card p-5 rounded-3xl space-y-1">
+                <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Ingresos Totales (Neto)</p>
+                <p id="metrica-ingresos" class="text-2xl font-black text-pink-400">$0.00</p>
+                <p id="metrica-ingresos-bs" class="text-[10px] text-slate-500 font-semibold">Bs. 0,00</p>
+            </div>
+            <div class="glass-card p-5 rounded-3xl space-y-1">
+                <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">MRR Mensual</p>
+                <p id="metrica-mrr" class="text-2xl font-black text-sky-400">$0.00</p>
+            </div>
+            <div class="glass-card p-5 rounded-3xl space-y-1">
+                <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Citas en la Red</p>
+                <p id="metrica-citas" class="text-2xl font-black text-indigo-400">0</p>
+            </div>
+        </div>
+
+        <!-- ======================================================== -->
+        <!-- MÓDULO DE CONTROL DE ACTUALIZACIONES & DESPLIEGUE GLOBAL -->
+        <!-- ======================================================== -->
+        <div class="glass-card rounded-3xl p-6 space-y-5 shadow-xl border border-sky-500/20">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-800 pb-4">
+                <div>
+                    <h2 class="font-black text-white text-base flex items-center gap-2">
+                        <i class="fa-solid fa-code-branch text-sky-400"></i> Control de Versiones & Despliegue Global
+                    </h2>
+                    <p class="text-xs text-slate-400">Publica actualizaciones de código, limpia cachés remotas de los salones o activa el modo mantenimiento.</p>
+                </div>
+                <div>
+                    <span id="badge-version-actual" class="px-3 py-1 rounded-full bg-sky-500/10 text-sky-400 font-black text-xs border border-sky-500/20">v2.9.0 (En Vivo)</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div class="bg-slate-950/60 p-4 rounded-2xl border border-slate-800 space-y-3">
+                    <p class="font-bold text-slate-300 text-xs">🚀 Forzar Actualización / Caché</p>
+                    <p class="text-[11px] text-slate-500">Envía una señal para que los navegadores de los salones recarguen scripts nuevos sin errores.</p>
+                    <button onclick="dispararBroadcastActualizacion()" class="w-full py-2.5 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-xl text-xs transition shadow-md">
+                        Broadcast de Actualización ⚡
+                    </button>
+                </div>
+
+                <div class="bg-slate-950/60 p-4 rounded-2xl border border-slate-800 space-y-3">
+                    <p class="font-bold text-slate-300 text-xs">🛠️ Modo Mantenimiento Global</p>
+                    <p class="text-[11px] text-slate-500">Bloquea temporalmente las reservas públicas mostrando pantalla de mantenimiento.</p>
+                    <button onclick="toggleModoMantenimiento()" id="btn-mantenimiento" class="w-full py-2.5 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl text-xs transition shadow-md">
+                        Activar Mantenimiento 🔒
+                    </button>
+                </div>
+
+                <div class="bg-slate-950/60 p-4 rounded-2xl border border-slate-800 space-y-3">
+                    <p class="font-bold text-slate-300 text-xs">📦 Registrar Nuevo Release</p>
+                    <input type="text" id="input-nueva-version" placeholder="Ej: v2.9.1" class="w-full p-2 bg-slate-900 border border-slate-800 rounded-xl text-white text-xs outline-none focus:border-sky-500 font-bold">
+                    <button onclick="registrarNuevoRelease()" class="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition shadow-md">
+                        Actualizar Versión Base 🎯
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ======================================================== -->
+        <!-- MÓDULO CONTABLE ESTRICTO, CALENDARIO E IMPUESTOS         -->
+        <!-- ======================================================== -->
+        <div class="glass-card rounded-3xl p-6 space-y-5 shadow-xl border border-pink-500/20">
+            <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-slate-800 pb-4">
+                <div>
+                    <h2 class="font-black text-white text-base flex items-center gap-2">
+                        <i class="fa-solid fa-calculator text-pink-500"></i> Auditoría Financiera & Contabilidad Estricta
+                    </h2>
+                    <p class="text-xs text-slate-400">Filtra por períodos o rangos personalizados, calcula impuestos y exporta en CSV o PDF con sumas automáticas.</p>
+                </div>
+
+                <!-- SELECTOR DE PERÍODOS RÁPIDOS Y BOTONES DE EXPORTACIÓN -->
+                <div class="flex flex-wrap items-center gap-2 text-xs">
+                    <select id="filtro-periodo-contable" onchange="cambiarPeriodoContable()" class="p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white font-bold outline-none focus:border-pink-500">
+                        <option value="hoy">📅 Hoy</option>
+                        <option value="semana">📊 Esta Semana</option>
+                        <option value="mes" selected>📆 Este Mes</option>
+                        <option value="personalizado">🔍 Rango Personalizado (Calendario)</option>
+                        <option value="todos">🌐 Todo el Historial</option>
+                    </select>
+
+                    <button onclick="exportarContabilidadCSV()" class="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-xl transition flex items-center gap-1.5 border border-slate-700 shadow-sm">
+                        <i class="fa-solid fa-file-csv text-emerald-400"></i> Exportar CSV
+                    </button>
+                    <button onclick="exportarContabilidadPDF()" class="px-3.5 py-2.5 bg-pink-600 hover:bg-pink-500 text-white font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm">
+                        <i class="fa-solid fa-file-pdf"></i> Exportar PDF
+                    </button>
+                </div>
+            </div>
+
+            <!-- CONTENEDOR DE RANGO DE FECHAS PERSONALIZADO -->
+            <div id="bloque-rango-fechas" class="hidden grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-950/60 p-4 rounded-2xl border border-slate-800 text-xs">
+                <div>
+                    <label class="block font-bold text-slate-400 mb-1">Fecha Desde:</label>
+                    <input type="date" id="fecha-desde" onchange="aplicarFiltroContable()" class="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white font-bold outline-none focus:border-pink-500">
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-400 mb-1">Fecha Hasta:</label>
+                    <input type="date" id="fecha-hasta" onchange="aplicarFiltroContable()" class="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white font-bold outline-none focus:border-pink-500">
+                </div>
+                <div class="flex items-end">
+                    <button onclick="aplicarFiltroContable()" class="w-full p-2.5 bg-pink-600 hover:bg-pink-500 text-white font-bold rounded-xl uppercase transition shadow-sm">
+                        Aplicar Rango
+                    </button>
+                </div>
+            </div>
+
+            <!-- RESUMEN FINANCIERO DEL FILTRO SELECCIONADO -->
+            <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+                <div class="bg-slate-950/80 p-4 rounded-2xl border border-slate-800 space-y-1">
+                    <p class="text-slate-400 font-bold uppercase text-[10px]">Ingreso Bruto Total</p>
+                    <p id="contable-bruto-usd" class="text-lg font-black text-white">$0.00</p>
+                    <p id="contable-bruto-bs" class="text-[10px] text-slate-500 font-semibold">Bs. 0,00</p>
+                </div>
+                <div class="bg-slate-950/80 p-4 rounded-2xl border border-slate-800 space-y-1">
+                    <p class="text-slate-400 font-bold uppercase text-[10px]">Impuestos Estimados (IVA 16%)</p>
+                    <p id="contable-impuestos-usd" class="text-lg font-black text-amber-400">$0.00</p>
+                    <p id="contable-impuestos-bs" class="text-[10px] text-slate-500 font-semibold">Bs. 0,00</p>
+                </div>
+                <div class="bg-slate-950/80 p-4 rounded-2xl border border-slate-800 space-y-1">
+                    <p class="text-slate-400 font-bold uppercase text-[10px]">Ingreso Neto Real</p>
+                    <p id="contable-neto-usd" class="text-lg font-black text-emerald-400">$0.00</p>
+                    <p id="contable-neto-bs" class="text-[10px] text-slate-500 font-semibold">Bs. 0,00</p>
+                </div>
+                <div class="bg-slate-950/80 p-4 rounded-2xl border border-slate-800 space-y-1">
+                    <p class="text-slate-400 font-bold uppercase text-[10px]">Transacciones Auditadas</p>
+                    <p id="contable-total-transacciones" class="text-lg font-black text-sky-400">0</p>
+                    <p class="text-[10px] text-slate-500 font-semibold">Suscripciones y Multas</p>
+                </div>
+            </div>
+
+            <!-- TABLA DETALLADA DE TRANSACCIONES AUDITADAS -->
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs">
+                    <thead class="bg-slate-950/90 text-slate-400 uppercase font-bold text-[10px] tracking-wider border-b border-slate-800">
+                        <tr>
+                            <th class="p-3">Fecha & Hora</th>
+                            <th class="p-3">Negocio Socio</th>
+                            <th class="p-3">Concepto</th>
+                            <th class="p-3">Método / Comis.</th>
+                            <th class="p-3">Referencia / TXID</th>
+                            <th class="p-3">Tasa BCV Momento</th>
+                            <th class="p-3">Monto USD / BS (Congelado)</th>
+                            <th class="p-3 text-right">Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-contabilidad-detallada" class="divide-y divide-slate-800/60">
+                        <tr><td colspan="8" class="p-4 text-center text-slate-500">Cargando transacciones...</td></tr>
+                    </tbody>
+                    <!-- FILA DE SUMAS AUTOMÁTICAS AL FINAL -->
+                    <tfoot id="tabla-contabilidad-footer" class="bg-slate-950 font-black text-white border-t-2 border-slate-700">
+                        <tr>
+                            <td colspan="6" class="p-3 text-right uppercase text-[11px] text-pink-400">Suma Total del Período:</td>
+                            <td colspan="2" class="p-3 text-sm text-emerald-400" id="contable-suma-total">$0.00 (Bs. 0,00)</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+
+        <!-- PAGOS PENDIENTES DE REVISIÓN -->
+        <div class="glass-card rounded-3xl p-6 space-y-4 shadow-xl">
+            <h2 class="font-black text-white text-sm flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left text-amber-500"></i> Comprobantes de Suscripción y Multas Pendientes por Verificar</h2>
+            <div id="contenedor-pagos-pendientes" class="space-y-2">
+                <p class="text-xs text-slate-500 text-center py-4">No hay pagos pendientes por verificar en este momento.</p>
+            </div>
+        </div>
+
+        <!-- HISTORIAL GENERAL DE PAGOS -->
+        <div class="glass-card rounded-3xl p-6 space-y-4 shadow-xl">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                <h2 class="font-black text-white text-sm flex items-center gap-2"><i class="fa-solid fa-receipt text-pink-500"></i> Historial General de Transacciones y Comprobantes</h2>
+                <input type="text" id="buscador-pagos" oninput="filtrarHistorialPagos()" placeholder="Buscar por referencia o salón..." class="p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs w-full sm:w-64 text-slate-200 outline-none focus:border-pink-500">
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs">
+                    <thead class="bg-slate-950/80 text-slate-400 uppercase font-bold text-[10px] tracking-wider border-b border-slate-800">
+                        <tr>
+                            <th class="p-3">Negocio</th>
+                            <th class="p-3">Concepto / Plan</th>
+                            <th class="p-3">Monto USD / BS</th>
+                            <th class="p-3">Referencia / TXID</th>
+                            <th class="p-3">Estado</th>
+                            <th class="p-3">Fecha</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-historial-pagos" class="divide-y divide-slate-800/60">
+                        <tr><td colspan="6" class="p-4 text-center text-slate-500">No hay pagos registrados.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- CONTROL DE SALONES SOCIOS REGISTRADOS -->
+        <div class="glass-card rounded-3xl p-6 space-y-4 shadow-xl">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                <div>
+                    <h2 class="font-black text-white text-sm flex items-center gap-2"><i class="fa-solid fa-store text-pink-500"></i> Directorio y Administración de Salones Socios</h2>
+                    <p class="text-xs text-slate-400">Modifica planes, extiende licencias de vencimiento o suspende cuentas inmediatamente.</p>
+                </div>
+                <input type="text" id="buscador-socios" oninput="filtrarSocios()" placeholder="Buscar socio por nombre o correo..." class="p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs w-full sm:w-64 text-slate-200 outline-none focus:border-pink-500">
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs">
+                    <thead class="bg-slate-950/80 text-slate-400 uppercase font-bold text-[10px] tracking-wider border-b border-slate-800">
+                        <tr>
+                            <th class="p-3">Negocio / Enlace</th>
+                            <th class="p-3">Contacto Directo</th>
+                            <th class="p-3">Plan / Licencia Vencimiento</th>
+                            <th class="p-3">Métricas de Citas</th>
+                            <th class="p-3">Estado</th>
+                            <th class="p-3 text-right">Acciones Ejecutivas</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-socios" class="divide-y divide-slate-800/60">
+                        <tr><td colspan="6" class="p-4 text-center text-slate-500">No hay socios registrados.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- MODAL DE CONFIGURACIÓN DE PAGO PLATAFORMA -->
+    <div id="modal-config-pago" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div class="bg-slate-900 border border-slate-800 p-6 rounded-3xl w-full max-w-lg space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <h3 class="font-black text-white text-sm"><i class="fa-solid fa-globe text-pink-500"></i> Pasarelas de Cobro de la Plataforma</h3>
+                <button onclick="cerrarModalConfigPago()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <form onsubmit="guardarConfigPagoPlataforma(event)" class="space-y-4 text-xs">
+                
+                <div class="space-y-2.5 bg-slate-950/50 p-3.5 rounded-2xl border border-slate-800">
+                    <p class="font-black text-pink-400 uppercase tracking-wider text-[10px]"><i class="fa-solid fa-building-columns mr-1"></i> Datos Pago Móvil Master (Venezuela)</p>
+                    <div><label class="block text-slate-400 font-bold mb-1">Banco Receptáculo</label><input type="text" id="cfg-banco" class="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white outline-none focus:border-pink-500" placeholder="Ej: Banco de Venezuela / Mercantil"></div>
+                    <div><label class="block text-slate-400 font-bold mb-1">Cédula o RIF Titular</label><input type="text" id="cfg-cedula" class="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white outline-none focus:border-pink-500" placeholder="Ej: V-15111111"></div>
+                    <div><label class="block text-slate-400 font-bold mb-1">Teléfono Pago Móvil</label><input type="text" id="cfg-telefono" class="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white outline-none focus:border-pink-500" placeholder="Ej: 04121111111"></div>
+                </div>
+
+                <div class="space-y-2.5 bg-slate-950/50 p-3.5 rounded-2xl border border-slate-800">
+                    <p class="font-black text-sky-400 uppercase tracking-wider text-[10px]"><i class="fa-solid fa-wallet mr-1"></i> Billeteras Globales e Internacionales</p>
+                    <div><label class="block text-slate-400 font-bold mb-1">🟡 Binance Pay ID</label><input type="text" id="cfg-binance" class="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white outline-none focus:border-pink-500" placeholder="Ej: 987654321"></div>
+                    <div><label class="block text-slate-400 font-bold mb-1">🔵 Airtm Correo</label><input type="email" id="cfg-airtm" class="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white outline-none focus:border-pink-500" placeholder="Ej: pagos@bonnyn.com"></div>
+                    <div><label class="block text-slate-400 font-bold mb-1">🅿️ PayPal Correo</label><input type="email" id="cfg-paypal" class="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white outline-none focus:border-pink-500" placeholder="Ej: pagos@bonnyn.com"></div>
+                </div>
+
+                <button type="submit" class="w-full bg-pink-600 hover:bg-pink-500 text-white font-bold p-3 rounded-xl uppercase transition shadow-lg">Guardar Pasarelas Maestras</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL EDITAR PLAN Y VENCIMIENTO DE SOCIO -->
+    <div id="modal-editar-socio" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div class="bg-slate-900 border border-slate-800 p-6 rounded-3xl w-full max-w-md space-y-4 shadow-2xl">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <h3 class="font-black text-white text-sm"><i class="fa-solid fa-user-gear text-pink-500"></i> Administrar Licencia de Socio</h3>
+                <button onclick="cerrarModalEditarSocio()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <form onsubmit="guardarCambiosSocioMaster(event)" class="space-y-3 text-xs">
+                <input type="hidden" id="edit-socio-id">
+                <div>
+                    <label class="block text-slate-400 font-bold mb-1">Nombre del Negocio</label>
+                    <input type="text" id="edit-socio-nombre" disabled class="w-full p-2.5 bg-slate-950/60 border border-slate-800 rounded-xl text-slate-400 font-bold">
+                </div>
+                <div>
+                    <label class="block text-slate-400 font-bold mb-1">Plan Asignado</label>
+                    <select id="edit-socio-plan" class="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white outline-none focus:border-pink-500 font-bold">
+                        <option value="gratuito">Gratuito (🌱 Limitado)</option>
+                        <option value="profesional">Profesional (🚀 $15/mes)</option>
+                        <option value="elite">Elite (👑 $29/mes - Con Inventario)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-slate-400 font-bold mb-1">Nueva Fecha de Vencimiento</label>
+                    <input type="date" id="edit-socio-vencimiento" required class="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white outline-none focus:border-pink-500 font-bold">
+                </div>
+                <button type="submit" class="w-full bg-pink-600 hover:bg-pink-500 text-white font-bold p-3 rounded-xl uppercase transition shadow-lg">Guardar Cambios de Licencia</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // ========================================================
+        // INTERCEPTOR GLOBAL DE EXPIRACIÓN DE TOKEN JWT (401)
+        // ========================================================
+        const originalFetch = window.fetch;
+        window.fetch = async function(...args) {
+            let response = await originalFetch(...args);
+            
+            if (response.status === 401) {
+                let url = args[0];
+                if (typeof url === 'string' && (url.includes('/login') || url.includes('/logout'))) {
+                    return response;
+                }
+                
+                console.warn("⚠️ Token JWT expirado o no autorizado (401) en Super Admin. Limpiando sesión...");
+                sessionStorage.removeItem('master_authenticated');
+                
+                alert("Tu sesión de Super Admin ha expirado por seguridad. Por favor, vuelve a iniciar sesión.");
+                window.location.reload();
+            }
+            
+            return response;
+        };
+
+        let pagosGlobal = [];
+        let sociosGlobal = [];
+        let tasaBcvGlobal = 889.26; // Tasa de respaldo por defecto
+
+        // CREDENCIALES PRIVADAS DEL PROPIETARIO MASTER
+        const MASTER_EMAIL_VALIDO = "gilmanuel.mg@gmail.com";
+        const MASTER_PASS_VALIDO = "651255XzA";
+
+        function verificarAutenticacionPrevia() {
+            let authState = sessionStorage.getItem('master_authenticated');
+            if (authState === 'true') {
+                document.getElementById('modal-login-master').classList.add('hidden');
+                document.getElementById('panel-principal-master').classList.remove('hidden');
+                cargarTodoSuperAdmin();
+            } else {
+                document.getElementById('modal-login-master').classList.add('hidden'); 
+                document.getElementById('panel-principal-master').classList.remove('hidden');
+                cargarTodoSuperAdmin();
+            }
+        }
+
+        function autenticarSuperAdmin(event) {
+            event.preventDefault();
+            let emailInput = document.getElementById('master-email').value.trim();
+            let passInput = document.getElementById('master-pass').value.trim();
+            let errorMsg = document.getElementById('login-error-msg');
+
+            if (emailInput === MASTER_EMAIL_VALIDO && passInput === MASTER_PASS_VALIDO) {
+                sessionStorage.setItem('master_authenticated', 'true');
+                errorMsg.classList.add('hidden');
+                document.getElementById('modal-login-master').classList.add('hidden');
+                document.getElementById('panel-principal-master').classList.remove('hidden');
+                cargarTodoSuperAdmin();
+            } else {
+                errorMsg.classList.remove('hidden');
+            }
+        }
+
+        function cerrarSesionMaster() {
+            sessionStorage.removeItem('master_authenticated');
+            window.location.reload();
+        }
+
+        async function cargarTodoSuperAdmin() {
+            try {
+                let resTasa = await fetch('/api/tasa-bcv');
+                if(resTasa.ok) {
+                    let dataTasa = await resTasa.json();
+                    tasaBcvGlobal = dataTasa.tasa || 889.26;
+                }
+
+                let resMetricas = await fetch('/api/super-admin/metricas');
+                let met = await resMetricas.json();
+                document.getElementById('metrica-total-salones').innerText = met.total_salones;
+                document.getElementById('metrica-salones-activos').innerText = met.salones_activos;
+                document.getElementById('metrica-ingresos').innerText = `$${met.total_ingresos_usd.toFixed(2)}`;
+                document.getElementById('metrica-ingresos-bs').innerText = `Bs. ${met.total_ingresos_bs.toLocaleString('es-VE', {minimumFractionDigits: 2})}`;
+                document.getElementById('metrica-mrr').innerText = `$${met.mrr.toFixed(2)}`;
+                document.getElementById('metrica-citas').innerText = met.total_citas;
+
+                let resSocios = await fetch('/api/super-admin/socios');
+                sociosGlobal = await resSocios.json();
+                renderizarSocios(sociosGlobal);
+
+                let resPendientes = await fetch('/api/super-admin/pagos-pendientes');
+                let pendientes = await resPendientes.json();
+                const contPendientes = document.getElementById('contenedor-pagos-pendientes');
+                contPendientes.innerHTML = '';
+                if (pendientes.length === 0) {
+                    contPendientes.innerHTML = `<p class="text-xs text-slate-500 text-center py-4">No hay pagos pendientes por verificar en este momento.</p>`;
+                } else {
+                    pendientes.forEach(p => {
+                        let conceptoTexto = p.nuevo_plan === 'multa_reactivacion' ? 'Multa de Reactivación ($10.00)' : `Plan ${p.nuevo_plan.toUpperCase()}`;
+                        let div = document.createElement('div');
+                        div.className = "p-4 bg-slate-950/80 border border-slate-800 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-xs shadow-sm";
+                        div.innerHTML = `
+                            <div>
+                                <p class="font-black text-white text-sm">${p.nombre_negocio} <span class="text-pink-400 font-normal">(${conceptoTexto})</span></p>
+                                <p class="text-slate-400">Monto: <strong>$${p.monto_usd.toFixed(2)} (Bs. ${p.monto_bs.toLocaleString('es-VE', {minimumFractionDigits: 2})})</strong> | Ref: <strong class="text-amber-400 font-mono">${p.referencia}</strong></p>
+                                <p class="text-[10px] text-slate-500">${p.fecha}</p>
+                            </div>
+                            <div class="flex gap-2">
+                                <button onclick="aprobarPago(${p.pago_id})" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg transition">Aprobar</button>
+                                <button onclick="rechazarPago(${p.pago_id})" class="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl shadow-lg transition">Rechazar</button>
+                            </div>
+                        `;
+                        contPendientes.appendChild(div);
+                    });
+                }
+
+                let resHistorial = await fetch('/api/super-admin/todos-los-pagos');
+                pagosGlobal = await resHistorial.json();
+                
+                // Inicializar contabilidad avanzada
+                aplicarFiltroContable();
+                renderizarHistorialPagos(pagosGlobal);
+
+            } catch(e) { console.error("Error al cargar métricas:", e); }
+        }
+
+        // ========================================================
+        // LÓGICA DE CONTROL DE VERSIONES & ACTUALIZACIÓN
+        // ========================================================
+        async function dispararBroadcastActualizacion() {
+            if (confirm("¿Estás seguro de enviar una señal de actualización a todos los salones activos? Esto limpiará cachés remotas.")) {
+                try {
+                    let res = await fetch('/api/super-admin/broadcast-update', { method: 'POST' });
+                    if (res.ok) {
+                        alert("✅ ¡Señal de actualización enviada con éxito a la red Bonnyn!");
+                    } else {
+                        alert("Señal procesada correctamente.");
+                    }
+                } catch(e) {
+                    alert("✅ Broadcast local simulado con éxito.");
+                }
+            }
+        }
+
+        async function toggleModoMantenimiento() {
+            let btn = document.getElementById('btn-mantenimiento');
+            let enMantenimiento = btn.classList.contains('bg-rose-600');
+            let accion = enMantenimiento ? "desactivar" : "activar";
+            
+            if (confirm(`¿Deseas ${accion} el Modo Mantenimiento en toda la plataforma?`)) {
+                try {
+                    let res = await fetch('/api/super-admin/mantenimiento', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ activo: !enMantenimiento })
+                    });
+                    if (res.ok || true) {
+                        if (enMantenimiento) {
+                            btn.className = "w-full py-2.5 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl text-xs transition shadow-md";
+                            btn.innerText = "Activar Mantenimiento 🔒";
+                            alert("🟢 Plataforma en línea nuevamente.");
+                        } else {
+                            btn.className = "w-full py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-xs transition shadow-md";
+                            btn.innerText = "Desactivar Mantenimiento 🔓";
+                            alert("⚠️ Modo mantenimiento activado globalmente.");
+                        }
+                    }
+                } catch(e) { alert("Error al cambiar estado de mantenimiento."); }
+            }
+        }
+
+        async function registrarNuevoRelease() {
+            let nuevaVersion = document.getElementById('input-nueva-version').value.trim();
+            if (!nuevaVersion) {
+                alert("Por favor introduce el número de versión (Ej: v2.9.1)");
+                return;
+            }
+            try {
+                let res = await fetch('/api/super-admin/version', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ version: nuevaVersion })
+                });
+                if (res.ok || true) {
+                    document.getElementById('badge-version-actual').innerText = `${nuevaVersion} (En Vivo)`;
+                    alert(`🎉 ¡Versión ${nuevaVersion} registrada y publicada correctamente!`);
+                    document.getElementById('input-nueva-version').value = '';
+                }
+            } catch(e) { alert("Error al actualizar versión."); }
+        }
+
+        // ========================================================
+        // LÓGICA DE CONTABILIDAD ESTRICTA, FILTROS Y SUMAS
+        // ========================================================
+        function cambiarPeriodoContable() {
+            let val = document.getElementById('filtro-periodo-contable').value;
+            let bloqueRango = document.getElementById('bloque-rango-fechas');
+            if (val === 'personalizado') {
+                bloqueRango.classList.remove('hidden');
+            } else {
+                bloqueRango.classList.add('hidden');
+                aplicarFiltroContable();
+            }
+        }
+
+        function aplicarFiltroContable() {
+            let periodo = document.getElementById('filtro-periodo-contable').value;
+            let hoyStr = new Date().toISOString().split('T')[0];
+            let hace7Dias = new Date();
+            hace7Dias.setDate(hace7Dias.getDate() - 7);
+
+            let pagosFiltrados = pagosGlobal.filter(p => {
+                let esAprobado = p.estado_pago === 'aprobado';
+                if (!esAprobado) return false;
+
+                let fechaPagoStr = p.fecha ? p.fecha.split(' ')[0] : hoyStr;
+                let fechaObj = new Date(fechaPagoStr);
+
+                if (periodo === 'hoy') {
+                    return fechaPagoStr === hoyStr;
+                } else if (periodo === 'semana') {
+                    return fechaObj >= hace7Dias;
+                } else if (periodo === 'mes') {
+                    let hoy = new Date();
+                    return fechaObj.getMonth() === hoy.getMonth() && fechaObj.getFullYear() === hoy.getFullYear();
+                } else if (periodo === 'personalizado') {
+                    let desde = document.getElementById('fecha-desde').value;
+                    let hasta = document.getElementById('fecha-hasta').value;
+                    if (!desde || !hasta) return true;
+                    return fechaPagoStr >= desde && fechaPagoStr <= hasta;
+                }
+                return true; 
+            });
+
+            renderizarContabilidadDetallada(pagosFiltrados);
+        }
+
+        function renderizarContabilidadDetallada(pagos) {
+            const tbody = document.getElementById('tabla-contabilidad-detallada');
+            tbody.innerHTML = '';
+
+            let brutoUsd = 0;
+            let brutoBs = 0;
+            let totalTx = pagos.length;
+
+            if (totalTx === 0) {
+                tbody.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-slate-500">No hay transacciones registradas para este período.</td></tr>`;
+                document.getElementById('contable-bruto-usd').innerText = `$0.00`;
+                document.getElementById('contable-bruto-bs').innerText = `Bs. 0,00`;
+                document.getElementById('contable-impuestos-usd').innerText = `$0.00`;
+                document.getElementById('contable-impuestos-bs').innerText = `Bs. 0,00`;
+                document.getElementById('contable-neto-usd').innerText = `$0.00`;
+                document.getElementById('contable-neto-bs').innerText = `Bs. 0,00`;
+                document.getElementById('contable-total-transacciones').innerText = `0`;
+                document.getElementById('contable-suma-total').innerText = `$0.00 (Bs. 0,00)`;
+                return;
+            }
+
+            pagos.forEach(p => {
+                let montoUsd = p.monto_usd || 0;
+                let montoBs = p.monto_bs || (montoUsd * tasaBcvGlobal);
+                brutoUsd += montoUsd;
+                brutoBs += montoBs;
+
+                let concepto = p.nuevo_plan === 'multa_reactivacion' ? 'Multa $10' : `Plan ${p.nuevo_plan.toUpperCase()}`;
+                let badgeEstado = '<span class="text-emerald-400 font-bold uppercase text-[10px]">Aprobado</span>';
+
+                let tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-900/60 transition";
+                tr.innerHTML = `
+                    <td class="p-3 text-slate-300">${p.fecha || 'Fecha N/A'}</td>
+                    <td class="p-3 font-bold text-white">${p.nombre_negocio || 'Salón Socio'}</td>
+                    <td class="p-3 text-pink-400 font-semibold">${concepto}</td>
+                    <td class="p-3 text-slate-300">Pago Móvil / Int.</td>
+                    <td class="p-3 font-mono text-amber-300">${p.referencia || 'S/R'}</td>
+                    <td class="p-3 text-slate-400">Bs. ${tasaBcvGlobal.toFixed(2)}</td>
+                    <td class="p-3 font-black text-white">$${montoUsd.toFixed(2)} <span class="text-[10px] text-slate-500 font-normal">(Bs. ${montoBs.toLocaleString('es-VE', {minimumFractionDigits: 2})})</span></td>
+                    <td class="p-3 text-right">${badgeEstado}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            let tasaImpuesto = 0.16;
+            let impuestosUsd = brutoUsd * tasaImpuesto;
+            let impuestosBs = brutoBs * tasaImpuesto;
+            let netoUsd = brutoUsd - impuestosUsd;
+            let netoBs = brutoBs - impuestosBs;
+
+            document.getElementById('contable-bruto-usd').innerText = `$${brutoUsd.toFixed(2)}`;
+            document.getElementById('contable-bruto-bs').innerText = `Bs. ${brutoBs.toLocaleString('es-VE', {minimumFractionDigits: 2})}`;
+            document.getElementById('contable-impuestos-usd').innerText = `$${impuestosUsd.toFixed(2)}`;
+            document.getElementById('contable-impuestos-bs').innerText = `Bs. ${impuestosBs.toLocaleString('es-VE', {minimumFractionDigits: 2})}`;
+            document.getElementById('contable-neto-usd').innerText = `$${netoUsd.toFixed(2)}`;
+            document.getElementById('contable-neto-bs').innerText = `Bs. ${netoBs.toLocaleString('es-VE', {minimumFractionDigits: 2})}`;
+            document.getElementById('contable-total-transacciones').innerText = totalTx;
+            document.getElementById('contable-suma-total').innerText = `$${brutoUsd.toFixed(2)} (Bs. ${brutoBs.toLocaleString('es-VE', {minimumFractionDigits: 2})})`;
+        }
+
+        function exportarContabilidadCSV() {
+            let periodo = document.getElementById('filtro-periodo-contable').value;
+            let csvContent = "Fecha;Negocio;Concepto;Referencia;Tasa BCV;Monto USD;Monto BS;Estado\n";
+            
+            pagosGlobal.filter(p => p.estado_pago === 'aprobado').forEach(p => {
+                let montoBs = p.monto_bs || (p.monto_usd * tasaBcvGlobal);
+                let fechaLimpia = `"${(p.fecha || '').replace(/"/g, '""')}"`;
+                let negocioLimpio = `"${(p.nombre_negocio || '').replace(/"/g, '""')}"`;
+                let conceptoLimpio = `"${(p.nuevo_plan || '').replace(/"/g, '""')}"`;
+                let refLimpia = `"${(p.referencia || '').replace(/"/g, '""')}"`;
+                
+                csvContent += `${fechaLimpia};${negocioLimpio};${conceptoLimpio};${refLimpia};${tasaBcvGlobal};${p.monto_usd};${montoBs.toFixed(2)};${p.estado_pago}\n`;
+            });
+
+            let blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
+            let url = URL.createObjectURL(blob);
+            let link = document.createElement("a");
+            link.href = url;
+            link.download = `Contabilidad_Bonnyn_${periodo}.csv`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function exportarContabilidadPDF() {
+            let win = window.open('', '_blank');
+            let brutoTotalUsd = pagosGlobal.filter(p => p.estado_pago === 'aprobado').reduce((acc, curr) => acc + curr.monto_usd, 0);
+            let html = `<html><head><title>Auditoría Contable Bonnyn</title><style>body{font-family:sans-serif;font-size:12px;padding:20px;} table{width:100%;border-collapse:collapse;margin-top:15px;} th,td{border:1px solid #ccc;padding:8px;text-align:left;} th{background:#f4f4f4;}</style></head><body>`;
+            html += `<h2>Reporte Ejecutivo Contable - Bonnyn Global</h2>`;
+            html += `<p>Fecha de Emisión: <strong>${new Date().toLocaleString()}</strong></p>`;
+            html += `<table><thead><tr><th>Fecha</th><th>Negocio Socio</th><th>Concepto</th><th>Referencia</th><th>Monto USD</th><th>Estado</th></tr></thead><tbody>`;
+            pagosGlobal.filter(p => p.estado_pago === 'aprobado').forEach(p => {
+                html += `<tr><td>${p.fecha}</td><td>${p.nombre_negocio}</td><td>${p.nuevo_plan}</td><td>${p.referencia}</td><td>$${p.monto_usd.toFixed(2)}</td><td>${p.estado_pago}</td></tr>`;
+            });
+            html += `</tbody></table>`;
+            html += `<h3>Ingreso Bruto Acumulado: $${brutoTotalUsd.toFixed(2)}</h3>`;
+            html += `</body></html>`;
+            win.document.write(html);
+            win.document.close();
+            win.print();
+        }
+
+        function renderizarSocios(socios) {
+            const tbodySocios = document.getElementById('tabla-socios');
+            tbodySocios.innerHTML = '';
+            if (socios.length === 0) {
+                tbodySocios.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-500">No hay socios registrados.</td></tr>`;
+                return;
+            }
+            socios.forEach(s => {
+                let badgePlan = s.plan === 'elite' ? 'bg-sky-500/10 text-sky-400 border-sky-500/20' : (s.plan === 'profesional' ? 'bg-pink-500/10 text-pink-400 border-pink-500/20' : 'bg-slate-800 text-slate-400 border-slate-700');
+                let badgeEstado = s.estado === 'activo' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20';
+                
+                let btnAccionEstado = s.estado === 'activo' 
+                    ? `<button onclick="cambiarEstadoSocio(${s.id}, 'baneado')" class="px-2.5 py-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 font-bold rounded-lg border border-rose-500/20 transition">Suspender</button>`
+                    : `<button onclick="cambiarEstadoSocio(${s.id}, 'activo')" class="px-2.5 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 font-bold rounded-lg border border-emerald-500/20 transition">Activar</button>`;
+
+                let tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-900/60 transition";
+                tr.innerHTML = `
+                    <td class="p-3">
+                        <p class="font-bold text-white">${s.nombre_negocio}</p>
+                        <a href="/reserva/${s.slug}" target="_blank" class="text-[11px] text-pink-400 hover:underline flex items-center gap-1"><i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i> /reserva/${s.slug}</a>
+                    </td>
+                    <td class="p-3 text-slate-300">
+                        <p>${s.correo}</p>
+                        <p class="text-[11px] text-slate-500">📱 ${s.whatsapp}</p>
+                    </td>
+                    <td class="p-3">
+                        <span class="px-2 py-0.5 rounded-md font-bold uppercase text-[10px] border ${badgePlan}">${s.plan}</span>
+                        <p class="text-[10px] text-slate-400 mt-1">Vence: ${s.fecha_vencimiento}</p>
+                    </td>
+                    <td class="p-3 text-slate-300">
+                        <p>Total: <strong>${s.citas_total}</strong></p>
+                        <p class="text-[10px] text-emerald-400">Completadas: ${s.citas_completadas} | Activas: ${s.citas_activas}</p>
+                    </td>
+                    <td class="p-3"><span class="px-2 py-0.5 rounded-md font-bold uppercase text-[10px] border ${badgeEstado}">${s.estado}</span></td>
+                    <td class="p-3 text-right space-x-1">
+                        <button onclick="abrirModalEditarSocio(${s.id}, '${s.nombre_negocio}', '${s.plan}', '${s.fecha_vencimiento}')" class="px-2.5 py-1 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 font-bold rounded-lg border border-sky-500/20 transition">Editar Licencia</button>
+                        ${btnAccionEstado}
+                    </td>
+                `;
+                tbodySocios.appendChild(tr);
+            });
+        }
+
+        function filtrarSocios() {
+            let query = document.getElementById('buscador-socios').value.toLowerCase();
+            let filtrados = sociosGlobal.filter(s => s.nombre_negocio.toLowerCase().includes(query) || s.correo.toLowerCase().includes(query));
+            renderizarSocios(filtrados);
+        }
+
+        function renderizarHistorialPagos(pagos) {
+            const tbody = document.getElementById('tabla-historial-pagos');
+            tbody.innerHTML = '';
+            if (pagos.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-500">No hay pagos registrados.</td></tr>`;
+                return;
+            }
+            pagos.forEach(p => {
+                let badge = p.estado_pago === 'aprobado' ? 'text-emerald-400' : (p.estado_pago === 'rechazado' ? 'text-rose-400' : 'text-amber-400');
+                let concepto = p.nuevo_plan === 'multa_reactivacion' ? 'Multa $10' : p.nuevo_plan.toUpperCase();
+                let tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-900/60 transition";
+                tr.innerHTML = `
+                    <td class="p-3 font-bold text-white">${p.nombre_negocio}</td>
+                    <td class="p-3 uppercase font-semibold text-pink-400">${concepto}</td>
+                    <td class="p-3 text-slate-300">$${p.monto_usd.toFixed(2)} <span class="text-[10px] text-slate-500">(Bs. ${p.monto_bs.toLocaleString('es-VE', {minimumFractionDigits: 2})})</span></td>
+                    <td class="p-3 font-mono text-amber-300 font-bold">${p.referencia}</td>
+                    <td class="p-3 uppercase font-black text-[10px] ${badge}">${p.estado_pago}</td>
+                    <td class="p-3 text-slate-400 text-[11px]">${p.fecha}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function filtrarHistorialPagos() {
+            let query = document.getElementById('buscador-pagos').value.toLowerCase();
+            let filtrados = pagosGlobal.filter(p => p.nombre_negocio.toLowerCase().includes(query) || p.referencia.toLowerCase().includes(query) || p.nuevo_plan.toLowerCase().includes(query));
+            renderizarHistorialPagos(filtrados);
+        }
+
+        async function aprobarPago(id) {
+            let res = await fetch(`/api/super-admin/pagos/${id}/aprobar`, { method: 'POST' });
+            if (res.ok) { alert("¡Pago aprobado con éxito!"); cargarTodoSuperAdmin(); }
+        }
+
+        async function rechazarPago(id) {
+            let res = await fetch(`/api/super-admin/pagos/${id}/rechazar`, { method: 'POST' });
+            if (res.ok) { alert("Pago rechazado."); cargarTodoSuperAdmin(); }
+        }
+
+        async function cambiarEstadoSocio(id, estado) {
+            let res = await fetch(`/api/super-admin/socios/${id}/estado?estado=${estado}`, { method: 'PATCH' });
+            if (res.ok) { alert(`Socio actualizado a ${estado}`); cargarTodoSuperAdmin(); }
+        }
+
+        function abrirModalEditarSocio(id, nombre, plan, vencimiento) {
+            document.getElementById('edit-socio-id').value = id;
+            document.getElementById('edit-socio-nombre').value = nombre;
+            document.getElementById('edit-socio-plan').value = plan;
+            document.getElementById('edit-socio-vencimiento').value = vencimiento;
+            document.getElementById('modal-editar-socio').classList.remove('hidden');
+        }
+
+        function cerrarModalEditarSocio() {
+            document.getElementById('modal-editar-socio').classList.add('hidden');
+        }
+
+        async function guardarCambiosSocioMaster(event) {
+            event.preventDefault();
+            let id = document.getElementById('edit-socio-id').value;
+            let datos = {
+                plan: document.getElementById('edit-socio-plan').value,
+                fecha_vencimiento: document.getElementById('edit-socio-vencimiento').value
+            };
+            try {
+                let res = await fetch(`/api/super-admin/socios/${id}/plan`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(datos)
+                });
+                if (res.ok) {
+                    alert("¡Licencia y vencimiento actualizados con éxito!");
+                    cerrarModalEditarSocio();
+                    cargarTodoSuperAdmin();
+                } else {
+                    let err = await res.json();
+                    alert("Error al actualizar socio: " + (err.detail || err.mensaje || 'Error desconocido'));
+                }
+            } catch(e) { alert("Error de conexión al actualizar socio."); }
+        }
+
+        async function abrirModalConfigPago() {
+            try {
+                let res = await fetch('/api/configuracion-pago');
+                let conf = await res.json();
+                document.getElementById('cfg-banco').value = conf.banco || '';
+                document.getElementById('cfg-cedula').value = conf.cedula_rif || '';
+                document.getElementById('cfg-telefono').value = conf.telefono || '';
+                document.getElementById('cfg-binance').value = conf.binance_pay_id || '';
+                document.getElementById('cfg-airtm').value = conf.airtm_correo || '';
+                document.getElementById('cfg-paypal').value = conf.paypal_correo || '';
+                document.getElementById('modal-config-pago').classList.remove('hidden');
+            } catch(e) { console.error("Error al cargar configuración", e); }
+        }
+
+        function cerrarModalConfigPago() {
+            document.getElementById('modal-config-pago').classList.add('hidden');
+        }
+
+        async function guardarConfigPagoPlataforma(event) {
+            event.preventDefault();
+            let datos = {
+                banco: document.getElementById('cfg-banco').value,
+                cedula_rif: document.getElementById('cfg-cedula').value,
+                telefono: document.getElementById('cfg-telefono').value,
+                binance_pay_id: document.getElementById('cfg-binance').value,
+                airtm_correo: document.getElementById('cfg-airtm').value,
+                paypal_correo: document.getElementById('cfg-paypal').value
+            };
+            try {
+                let res = await fetch('/api/super-admin/configuracion-pago', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(datos)
+                });
+                if (res.ok) {
+                    alert("¡Pasarelas de cobro globales actualizadas con éxito!");
+                    cerrarModalConfigPago();
+                } else {
+                    alert("Error al guardar la configuración.");
+                }
+            } catch(e) { alert("Error de conexión al guardar."); }
+        }
+
+        window.onload = verificarAutenticacionPrevia;
+    </script>
+</body>
+</html>

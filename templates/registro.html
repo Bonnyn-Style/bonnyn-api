@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registro de Salón o Negocio | Bonnyn</title>
+    
+    <!-- Configuración PWA y Enlace de Manifiesto -->
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#e11d48">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <style>
+        #mapa-registro { height: 220px; width: 100%; border-radius: 1rem; z-index: 10; margin-top: 8px; }
+    </style>
+</head>
+<body class="bg-pink-50/40 text-slate-800 font-sans antialiased min-h-screen p-4 sm:p-8 flex items-center justify-center">
+
+    <div class="max-w-xl w-full bg-white p-6 sm:p-8 rounded-3xl shadow-xl border border-pink-100 space-y-6">
+        
+        <div class="text-center space-y-1.5 border-b border-pink-100 pb-4">
+            <h1 class="text-2xl font-black text-slate-900">Crea tu Negocio en la Plataforma</h1>
+            <p class="text-xs text-slate-500 font-medium">Comienza gratis con tu plan inicial y expande tus reservas</p>
+        </div>
+
+        <form onsubmit="registrarNegocio(event)" class="space-y-4 text-xs">
+            
+            <div class="space-y-1">
+                <label class="block font-bold text-slate-700">Nombre del Salón o Estudio *</label>
+                <input type="text" id="input-nombre" required placeholder="Ej: Studio Maria Nails" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 outline-none focus:border-pink-500">
+            </div>
+
+            <div class="space-y-1">
+                <label class="block font-bold text-slate-700">Tu Link Personal (Slug) *</label>
+                <input type="text" id="input-slug" required placeholder="ej: studio-maria" oninput="this.value = this.value.toLowerCase().replace(/[^a-z0-9-]/g, '')" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 outline-none focus:border-pink-500">
+                <p class="text-[10px] text-slate-400">Sin espacios ni símbolos (ej: studio-maria)</p>
+            </div>
+
+            <!-- SELECTOR DE PAÍS Y MONEDA ACTUALIZADO -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-pink-50/50 p-4 rounded-2xl border border-pink-100">
+                <div class="space-y-1">
+                    <label class="block font-bold text-pink-900">País de Operación *</label>
+                    <select id="select-pais" onchange="cambiarConfiguracionPais()" class="w-full p-2.5 bg-white border border-pink-200 rounded-xl font-bold text-slate-800 outline-none">
+                        <option value="VE" selected>🇻🇪 Venezuela</option>
+                        <option value="CO">🇨🇴 Colombia</option>
+                        <option value="PE">🇵🇪 Perú</option>
+                        <option value="AR">🇦🇷 Argentina</option>
+                        <option value="CL">🇨🇱 Chile</option>
+                        <option value="EC">🇪🇨 Ecuador</option>
+                        <option value="PA">🇵🇦 Panamá</option>
+                        <option value="MX">🇲🇽 México</option>
+                        <option value="US">🇺🇸 Estados Unidos / Internacional</option>
+                    </select>
+                </div>
+                <div class="space-y-1">
+                    <label class="block font-bold text-pink-900">Moneda de Cobro *</label>
+                    <select id="select-moneda" class="w-full p-2.5 bg-white border border-pink-200 rounded-xl font-bold text-slate-800 outline-none">
+                        <option value="USD" selected>USD ($)</option>
+                        <option value="COP">COP ($)</option>
+                        <option value="PEN">PEN (S/)</option>
+                        <option value="ARS">ARS ($)</option>
+                        <option value="CLP">CLP ($)</option>
+                        <option value="MXN">MXN ($)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="space-y-1">
+                <label class="block font-bold text-slate-700">Correo Electrónico (Para Login) *</label>
+                <input type="email" id="input-correo" required placeholder="tu.correo@email.com" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 outline-none focus:border-pink-500">
+            </div>
+
+            <div class="space-y-1">
+                <label class="block font-bold text-slate-700">Contraseña Segura *</label>
+                <input type="password" id="input-password" required minlength="6" placeholder="••••••••" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 outline-none focus:border-pink-500">
+            </div>
+
+            <div class="space-y-1">
+                <label class="block font-bold text-slate-700">Dirección y Ubicación de la Tienda</label>
+                <input type="text" id="input-direccion" placeholder="Ej: Av. Principal, C.C. Las Flores, Local 4" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 outline-none focus:border-pink-500">
+            </div>
+
+            <div class="space-y-2">
+                <div class="flex justify-between items-center">
+                    <label class="block font-bold text-slate-700">Ubicación en el Mapa (Arrastra el marcador o usa tu GPS)</label>
+                    <button type="button" onclick="usarUbicacionActual()" class="text-pink-600 font-bold hover:underline text-[11px] bg-pink-50 px-2.5 py-1 rounded-lg border border-pink-100">
+                        <i class="fa-solid fa-location-crosshairs mr-1"></i> Usar mi GPS
+                    </button>
+                </div>
+                <div id="mapa-registro"></div>
+            </div>
+
+            <!-- BLOQUE DE DATOS DE PAGO (Dinámico según el país seleccionado) -->
+            <div id="seccion-datos-pago" class="space-y-3 pt-2 border-t border-slate-100 bg-pink-50/50 p-4 rounded-2xl border border-pink-100">
+                <label id="titulo-seccion-pago" class="block font-black text-pink-900 text-sm">Datos de Contacto & Pago Móvil</label>
+                
+                <div class="space-y-1">
+                    <label class="block font-bold text-slate-700">WhatsApp de Contacto *</label>
+                    <input type="text" id="input-whatsapp" required placeholder="Ej: 04121234567 o +57..." oninput="this.value = this.value.replace(/[^0-9+]/g, '')" class="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 outline-none">
+                </div>
+
+                <!-- CAMPOS ESPECÍFICOS: VENEZUELA (Pago Móvil) -->
+                <div id="campos-pago-venezuela" class="space-y-3">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                            <label class="block font-bold text-slate-700 mb-1">Banco (Pago Móvil) *</label>
+                            <input type="text" id="input-banco" placeholder="Banco de Venezuela" class="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 outline-none">
+                        </div>
+                        <div>
+                            <label class="block font-bold text-slate-700 mb-1">Cédula o RIF *</label>
+                            <input type="text" id="input-cedula" placeholder="V-15111111" class="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 outline-none">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Teléfono Pago Móvil *</label>
+                        <input type="text" id="input-telpm" maxlength="11" placeholder="04121111111" oninput="this.value = this.value.replace(/[^0-9]/g, '')" class="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 outline-none">
+                    </div>
+                </div>
+
+                <!-- CAMPOS ESPECÍFICOS: OTROS PAÍSES (Nacional / Monedero / Transferencia) -->
+                <div id="campos-pago-internacional" class="space-y-3 hidden">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                            <label id="label-tipo-metodo" class="block font-bold text-slate-700 mb-1">Método / Billetera local</label>
+                            <input type="text" id="input-metodo-nacional-tipo" placeholder="Ej: Yape / Nequi / CBU / SPEI" class="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 outline-none">
+                        </div>
+                        <div>
+                            <label class="block font-bold text-slate-700 mb-1">Banco / Entidad Financiera</label>
+                            <input type="text" id="input-banco-local" placeholder="Ej: BCP / Bancolombia / BBVA" class="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 outline-none">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                            <label class="block font-bold text-slate-700 mb-1">Nº Cuenta / CBU / CLABE / Teléfono</label>
+                            <input type="text" id="input-cuenta-local" placeholder="Número de cuenta o celular asociado" class="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 outline-none">
+                        </div>
+                        <div>
+                            <label class="block font-bold text-slate-700 mb-1">Titular y Cédula / RUT / DNI</label>
+                            <input type="text" id="input-titular-local" placeholder="Nombre y Documento del Titular" class="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 outline-none">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PASARELAS GLOBALES UNIVERSALES (BINANCE PAY & AIRTM) PARA TODOS LOS PAÍSES -->
+                <div class="pt-3 border-t border-pink-200 space-y-3">
+                    <p class="font-black text-pink-900 text-xs flex items-center gap-1.5">
+                        <i class="fa-solid fa-globe text-pink-600"></i> Pasarelas Globales Universales (Opcional pero recomendado)
+                    </p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                            <label class="block font-bold text-slate-700 mb-1">Binance Pay ID / Correo</label>
+                            <input type="text" id="input-binance" placeholder="Tu Pay ID o correo Binance" class="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 outline-none">
+                        </div>
+                        <div>
+                            <label class="block font-bold text-slate-700 mb-1">Correo o Username Airtm</label>
+                            <input type="text" id="input-airtm" placeholder="tu.correo@airtm.com" class="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 outline-none">
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="space-y-3 pt-2">
+                <label class="flex items-start gap-2 cursor-pointer text-slate-600">
+                    <input type="checkbox" id="check-terminos" required class="w-4 h-4 text-pink-600 rounded mt-0.5">
+                    <span>Acepto los <button type="button" onclick="abrirModalTerminos(event)" class="text-pink-600 font-bold underline hover:text-pink-700">Términos del Servicio, Privacidad y Exoneración Legal B2B</button> de Bonnyn.</span>
+                </label>
+
+                <button type="submit" class="w-full bg-pink-600 hover:bg-pink-700 text-white font-black p-3.5 rounded-2xl uppercase transition shadow-md tracking-wider">
+                    <i class="fa-solid fa-rocket mr-1"></i> Registrar mi Negocio Gratis
+                </button>
+            </div>
+
+            <div class="text-center pt-2">
+                <span class="text-slate-500 font-medium">¿Ya tienes una cuenta?</span> 
+                <a href="/login" class="text-pink-600 font-bold hover:underline">Inicia Sesión aquí</a>
+            </div>
+
+        </form>
+
+    </div>
+
+    <!-- MODAL DE TÉRMINOS, PRIVACIDAD Y EXONERACIÓN LEGAL B2B -->
+    <div id="modalTerminos" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
+            <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                <h3 class="font-black text-slate-900 text-sm uppercase">Términos de Servicio, Privacidad & Exoneración Legal B2B</h3>
+                <button type="button" onclick="cerrarModalTerminos()" class="text-slate-400 hover:text-slate-700 text-xl font-bold">&times;</button>
+            </div>
+            
+            <div class="space-y-3 text-xs text-slate-600 leading-relaxed text-left">
+                <p><strong>1. Naturaleza Tecnológica de la Plataforma (SaaS B2B):</strong> Bonnyn opera exclusivamente como una plataforma tecnológica proveedora de software de gestión, agenda y automatización operativa. Bonnyn <strong>no interviene, recauda, custodia ni administra fondos monetarios</strong> de ninguna transacción realizada entre los comercios asociados y sus clientes finales.</p>
+                
+                <p><strong>2. Independencia Financiera y Desligamiento Legal Absoluto:</strong> Toda transacción, pago móvil, transferencia bancaria, manejo de divisas o cobro de servicios agendados es responsabilidad directa, autónoma y exclusiva entre el socio comercial (el salón o estudio) y su cliente. Bonnyn queda total, plena e irrevocablemente exonerada de cualquier disputa económica, reembolso, error de transferencia, fraude o inconveniente transaccional derivado de la actividad comercial del establecimiento.</p>
+                
+                <p><strong>3. Privacidad y Tratamiento de Datos:</strong> Los datos ingresados son utilizados exclusivamente para la automatización operativa de las agendas y recordatorios. El socio comercial es responsable del cumplimiento de las normativas de protección de datos aplicables a su clientela local.</p>
+            </div>
+
+            <div class="pt-3 border-t border-slate-100 text-right">
+                <button type="button" onclick="cerrarModalTerminos()" class="bg-pink-600 text-white font-bold px-5 py-2.5 rounded-xl text-xs hover:bg-pink-700 transition">Entendido y de Acuerdo</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script>
+        let mapaReg, marcadorReg;
+        let latDefault = 10.4534;
+        let lonDefault = -64.1705;
+
+        function abrirModalTerminos(e) {
+            e.preventDefault();
+            document.getElementById('modalTerminos').classList.remove('hidden');
+        }
+
+        function cerrarModalTerminos() {
+            document.getElementById('modalTerminos').classList.add('hidden');
+        }
+
+        function inicializarMapaRegistro() {
+            mapaReg = L.map('mapa-registro').setView([latDefault, lonDefault], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(mapaReg);
+            marcadorReg = L.marker([latDefault, lonDefault], { draggable: true }).addTo(mapaReg);
+        }
+
+        function usarUbicacionActual() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(pos => {
+                    let lat = pos.coords.latitude;
+                    let lon = pos.coords.longitude;
+                    mapaReg.setView([lat, lon], 16);
+                    marcadorReg.setLatLng([lat, lon]);
+                }, () => {
+                    alert("No se pudo obtener tu ubicación GPS.");
+                });
+            }
+        }
+
+        function cambiarConfiguracionPais() {
+            let pais = document.getElementById('select-pais').value;
+            let monedaSel = document.getElementById('select-moneda');
+            let bloqueVe = document.getElementById('campos-pago-venezuela');
+            let bloqueInt = document.getElementById('campos-pago-internacional');
+            let tituloPago = document.getElementById('titulo-seccion-pago');
+            let labelMetodo = document.getElementById('label-tipo-metodo');
+
+            if (pais === 'VE') {
+                monedaSel.value = 'USD';
+                bloqueVe.classList.remove('hidden');
+                bloqueInt.classList.add('hidden');
+                tituloPago.innerText = "Datos de Contacto & Pago Móvil";
+                document.getElementById('input-banco').required = true;
+                document.getElementById('input-cedula').required = true;
+                document.getElementById('input-telpm').required = true;
+                
+                document.getElementById('input-metodo-nacional-tipo').required = false;
+            } else {
+                if (pais === 'CO') { monedaSel.value = 'COP'; labelMetodo.innerText = "Billetera (Nequi / DaviPlata)"; }
+                else if (pais === 'PE') { monedaSel.value = 'PEN'; labelMetodo.innerText = "Monedero (Yape / Plin)"; }
+                else if (pais === 'AR') { monedaSel.value = 'ARS'; labelMetodo.innerText = "Plataforma (Mercado Pago CBU/CVU)"; }
+                else if (pais === 'CL') { monedaSel.value = 'CLP'; labelMetodo.innerText = "Banco / CuentaRUT"; }
+                else if (pais === 'EC' || pais === 'PA') { monedaSel.value = 'USD'; labelMetodo.innerText = "Banco / Yappy"; }
+                else if (pais === 'MX') { monedaSel.value = 'MXN'; labelMetodo.innerText = "SPEI / CLABE Interbancaria"; }
+                else { monedaSel.value = 'USD'; labelMetodo.innerText = "Zelle / Venmo / Método Local"; }
+
+                bloqueVe.classList.add('hidden');
+                bloqueInt.classList.remove('hidden');
+                tituloPago.innerText = "Datos de Contacto & Coordinación de Pago Nacional";
+                document.getElementById('input-banco').required = false;
+                document.getElementById('input-cedula').required = false;
+                document.getElementById('input-telpm').required = false;
+                
+                document.getElementById('input-metodo-nacional-tipo').required = true;
+            }
+        }
+
+        async function registrarNegocio(event) {
+            event.preventDefault();
+
+            let nombre = document.getElementById('input-nombre').value;
+            let slug = document.getElementById('input-slug').value;
+            let correo = document.getElementById('input-correo').value;
+            let password = document.getElementById('input-password').value;
+            let direccion = document.getElementById('input-direccion').value;
+            let whatsapp = document.getElementById('input-whatsapp').value;
+            let pais = document.getElementById('select-pais').value;
+            let moneda = document.getElementById('select-moneda').value;
+            
+            // Datos específicos según país
+            let banco = pais === 'VE' ? document.getElementById('input-banco').value : 'N/A';
+            let cedula = pais === 'VE' ? document.getElementById('input-cedula').value : 'N/A';
+            let telpm = pais === 'VE' ? document.getElementById('input-telpm').value : 'N/A';
+
+            let metodo_nacional_tipo = pais !== 'VE' ? document.getElementById('input-metodo-nacional-tipo').value : 'Pago Móvil';
+            let banco_local = pais !== 'VE' ? document.getElementById('input-banco-local').value : '';
+            let cuenta_local = pais !== 'VE' ? document.getElementById('input-cuenta-local').value : '';
+            let titular_local = pais !== 'VE' ? document.getElementById('input-titular-local').value : '';
+            
+            // Pasarelas Globales
+            let binance_pay_id = document.getElementById('input-binance').value;
+            let airtm_correo = document.getElementById('input-airtm').value;
+
+            let pos = marcadorReg.getLatLng();
+
+            let payload = {
+                nombre_negocio: nombre,
+                slug: slug,
+                email: correo,
+                password: password,
+                telefono_whatsapp: whatsapp,
+                direccion: direccion,
+                pais: pais,
+                moneda: moneda,
+                banco: banco,
+                cedula_rif: cedula,
+                telefono_pago_movil: telpm,
+                metodo_pago_nacional_tipo: metodo_nacional_tipo,
+                banco_local: banco_local,
+                numero_cuenta_local: cuenta_local,
+                titular_cuenta_local: titular_local,
+                binance_pay_id: binance_pay_id,
+                airtm_correo: airtm_correo,
+                latitud: pos.lat,
+                longitud: pos.lng
+            };
+
+            try {
+                let res = await fetch('/api/registro', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (res.ok) {
+                    let data = await res.json();
+                    localStorage.setItem('profesional_id', data.profesional_id);
+                    localStorage.setItem('slug_negocio', slug);
+                    alert("¡Negocio registrado con éxito!");
+                    window.location.href = '/admin';
+                } else {
+                    let err = await res.json();
+                    alert("Error en el registro: " + (err.detail || "Verifica los datos"));
+                }
+            } catch(e) {
+                alert("Error de conexión al registrar el negocio.");
+            }
+        }
+
+        window.onload = inicializarMapaRegistro;
+    </script>
+</body>
+</html>
