@@ -1732,28 +1732,36 @@ def obtener_citas(profesional_id: int = None, db: Session = Depends(get_db)):
 
 @app.get("/api/citas/cliente/{whatsapp}")
 def consultar_citas_cliente(whatsapp: str, profesional_id: int = None, db: Session = Depends(get_db)):
-    q = db.query(models.Cita).filter(models.Cita.whatsapp_clienta == whatsapp, models.Cita.estado.in_(["pendiente", "confirmada"]))
+    whatsapp_limpio = "".join(filter(str.isdigit, whatsapp))
+    
+    q = db.query(models.Cita).filter(models.Cita.estado.in_(["pendiente", "confirmada"]))
     if profesional_id:
         q = q.filter(models.Cita.profesional_id == profesional_id)
+        
+    citas_activas = q.all()
     res = []
-    for c in q.order_by(models.Cita.fecha_hora_inicio.desc()).all():
-        serv = db.query(models.Servicio).filter(models.Servicio.id == c.servicio_id).first()
-        pers = db.query(models.Personal).filter(models.Personal.id == c.personal_id).first() if c.personal_id else None
-        res.append({
-            "id": c.id, 
-            "nombre_clienta": c.nombre_clienta, 
-            "whatsapp_clienta": c.whatsapp_clienta,
-            "servicio": serv.nombre if serv else "Desconocido", 
-            "personal": pers.nombre if pers else "General",
-            "precio_total_usd": c.monto_total_usd if getattr(c, 'monto_total_usd', None) is not None else (serv.precio_usd if serv else 0.0),
-            "monto_abonado_usd": c.monto_abonado_usd if getattr(c, 'monto_abonado_usd', None) is not None else c.monto_pagado,
-            "saldo_pendiente_usd": c.saldo_pendiente_usd if getattr(c, 'saldo_pendiente_usd', None) is not None else 0.0,
-            "modalidad_pago": getattr(c, 'modalidad_pago', 'completo'),
-            "estado_financiero_pago": getattr(c, 'estado_financiero_pago', 'pagado'),
-            "fecha_hora_inicio": c.fecha_hora_inicio.strftime("%Y-%m-%d %I:%M %p"), 
-            "monto_pagado": c.monto_pagado, 
-            "estado": c.estado
-        })
+    
+    for c in citas_activas:
+        wsp_guardado = "".join(filter(str.isdigit, c.whatsapp_clienta or ""))
+        
+        if wsp_guardado.endswith(whatsapp_limpio) or whatsapp_limpio.endswith(wsp_guardado):
+            serv = db.query(models.Servicio).filter(models.Servicio.id == c.servicio_id).first()
+            pers = db.query(models.Personal).filter(models.Personal.id == c.personal_id).first() if c.personal_id else None
+            res.append({
+                "id": c.id, 
+                "nombre_clienta": c.nombre_clienta, 
+                "whatsapp_clienta": c.whatsapp_clienta,
+                "servicio": serv.nombre if serv else "Desconocido", 
+                "personal": pers.nombre if pers else "General",
+                "precio_total_usd": c.monto_total_usd if getattr(c, 'monto_total_usd', None) is not None else (serv.precio_usd if serv else 0.0),
+                "monto_abonado_usd": c.monto_abonado_usd if getattr(c, 'monto_abonado_usd', None) is not None else c.monto_pagado,
+                "saldo_pendiente_usd": c.saldo_pendiente_usd if getattr(c, 'saldo_pendiente_usd', None) is not None else 0.0,
+                "modalidad_pago": getattr(c, 'modalidad_pago', 'completo'),
+                "estado_financiero_pago": getattr(c, 'estado_financiero_pago', 'pagado'),
+                "fecha_hora_inicio": c.fecha_hora_inicio.strftime("%Y-%m-%d %I:%M %p"), 
+                "monto_pagado": c.monto_pagado, 
+                "estado": c.estado
+            })
     return res
 
 @app.patch("/api/citas/{cita_id}/estado")
