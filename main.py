@@ -57,8 +57,7 @@ async def lifespan(app: FastAPI):
     # Arranque de hilos en segundo plano al iniciar el servidor
     threading.Thread(target=background_whatsapp_reminder_loop, daemon=True).start()
     threading.Thread(target=tarea_sondeo_bcv, daemon=True).start()
-    threading.Thread(target=background_backup_loop, daemon=True).start()
-    logger.info("🟢 [Bonnyn] Hilos en segundo plano (WhatsApp, BCV y Respaldo Diario) iniciados correctamente.")
+    logger.info("🟢 [Bonnyn] Hilos en segundo plano (WhatsApp y BCV) iniciados correctamente.")
     
     yield
     
@@ -147,86 +146,6 @@ def remove_old_logo(logo_url: str):
                 logger.info(f"Logo antiguo eliminado: {file_path}")
             except Exception as e:
                 logger.error(f"Error al eliminar logo antiguo {file_path}: {e}")
-
-def ejecutar_envio_respaldo_db() -> bool:
-    """Busca el archivo de base de datos SQLite y lo envía al correo configurado."""
-    posibles_rutas = ["bonnyn.db", "./bonnyn.db", "sql_app.db", "./sql_app.db"]
-    ruta_encontrada = None
-    for r in posibles_rutas:
-        if os.path.exists(r):
-            ruta_encontrada = r
-            break
-
-    if not ruta_encontrada:
-        # Buscar dinámicamente cualquier archivo .db en el directorio actual
-        for f in os.listdir("."):
-            if f.endswith(".db"):
-                ruta_encontrada = f
-                break
-
-    if not ruta_encontrada:
-        logger.error("❌ [RESPALDO] No se encontró ningún archivo de base de datos (.db) en el servidor.")
-        return False
-
-    fecha_hoy = datetime.datetime.now().strftime("%Y-%m-%d")
-    asunto = f"📦 Respaldo Base de Datos Bonnyn - {fecha_hoy}"
-    
-    html_content = f"""
-    <!DOCTYPE html>
-    <html lang="es">
-    <head><meta charset="UTF-8"></head>
-    <body style="font-family: sans-serif; background: #f8fafc; padding: 20px;">
-        <div style="max-width: 480px; margin: 0 auto; background: #fff; border-radius: 24px; padding: 32px; text-align: center; border: 1px solid #fbcfe8;">
-            <h1 style="color: #0f172a; font-size: 20px;">Respaldo Automático / Manual</h1>
-            <p style="color: #64748b;">Adjunto encontrarás el archivo de respaldo de la base de datos de Bonnyn correspondiente al {fecha_hoy}.</p>
-            <div style="background: #f1f5f9; border-radius: 12px; font-size: 14px; font-weight: bold; color: #334155; padding: 12px; margin: 20px 0;">Archivo: {ruta_encontrada}</div>
-        </div>
-    </body>
-    </html>
-    """
-
-    try:
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = asunto
-        msg["From"] = f"Bonnyn Soporte <{SENDER_EMAIL}>"
-        msg["To"] = RECEPTOR_RESPALDO
-        msg.attach(MIMEText(html_content, "html"))
-
-        with open(ruta_encontrada, "rb") as f:
-            parte = MIMEBase('application', 'octet-stream')
-            parte.set_payload(f.read())
-            encoders.encode_base64(parte)
-            parte.add_header('Content-Disposition', f'attachment; filename="{os.path.basename(ruta_encontrada)}"')
-            msg.attach(parte)
-
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SMTP_USER, SMTP_PASSWORD)
-            server.sendmail(SENDER_EMAIL, RECEPTOR_RESPALDO, msg.as_string())
-        
-        logger.info(f"✅ [RESPALDO] Base de datos enviada con éxito a {RECEPTOR_RESPALDO}")
-        return True
-    except Exception as e:
-        logger.error(f"❌ [RESPALDO] Error al enviar correo de respaldo: {e}")
-        return False
-
-def background_backup_loop():
-    """Hilo en segundo plano que revisa cada hora si son las 12:00 AM (00:00) para enviar el respaldo."""
-    logger.info("🟢 [RESPALDO] Servicio de respaldo automático a las 12:00 AM iniciado.")
-    ultimo_dia_respaldado = None
-    while True:
-        try:
-            ahora = datetime.datetime.now()
-            # Verificar si son las 00:00 (12 AM) y aún no se ha respaldado hoy
-            if ahora.hour == 0 and ahora.date() != ultimo_dia_respaldado:
-                logger.info("⏰ [RESPALDO] Hora programada alcanzada (12:00 AM). Iniciando respaldo automático...")
-                exito = ejecutar_envio_respaldo_db()
-                if exito:
-                    ultimo_dia_respaldado = ahora.date()
-            time.sleep(1800) # Comprobar cada 30 minutos
-        except Exception as e:
-            logger.error(f"Error en bucle de respaldo automático: {e}")
-            time.sleep(300)
 
 
 class SolicitarRecuperacionSchema(BaseModel):
@@ -1927,15 +1846,32 @@ def logout_master():
     resp.delete_cookie("master_session_token", path="/")
     return resp
 
-@app.get("/api/super-admin/respaldo-manual")
-def admin_respaldo_manual(request: Request):
-    """Endpoint para solicitar el respaldo de la base de datos de manera manual desde el panel de Super Admin."""
+@app.get("/api/super-admin/descargar-respaldo-db")
+def admin_descargar_respaldo_db(request: Request):
+    """Genera y descarga el archivo SQLite directamente al navegador con un solo clic."""
     verificar_sesion_master(request)
-    exito = ejecutar_envio_respaldo_db()
-    if exito:
-        return {"status": "success", "mensaje": f"¡Respaldo enviado con éxito a {RECEPTOR_RESPALDO}!"}
-    else:
-        raise HTTPException(status_code=500, detail="⚠️ Error al generar o enviar el archivo de respaldo por correo.")
+    
+    posibles_rutas = ["bonnyn.db", "./bonnyn.db", "sql_app.db", "./sql_app.db"]
+    ruta_encontrada = None
+    for r in posibles_rutas:
+        if os.path.exists(r):
+            ruta_encontrada = r
+            break
+
+    if not ruta_encontrada:
+        for f in os.listdir("."):
+            if f.endswith(".db"):
+                ruta_encontrada = f
+                break
+
+    if not ruta_encontrada:
+        raise HTTPException(status_code=404, detail="⚠️ No se encontró ningún archivo de base de datos en el servidor.")
+
+    return FileResponse(
+        path=ruta_encontrada,
+        filename=f"respaldo_bonnyn_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M')}.db",
+        media_type="application/octet-stream"
+    )
 
 @app.get("/api/super-admin/metricas")
 def admin_metricas_globales(request: Request, db: Session = Depends(get_db)):
