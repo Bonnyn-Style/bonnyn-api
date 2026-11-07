@@ -1795,15 +1795,98 @@ def cambiar_estado_cita(cita_id: int, nuevo_estado: str, db: Session = Depends(g
 def reprogramar_cita(cita_id: int, data: schemas.CitaReprogramar, db: Session = Depends(get_db)):
     c = db.query(models.Cita).filter(models.Cita.id == cita_id).first()
     if not c:
-        raise HTTPException(status_code=404, detail="No encontrada")
-    dt = datetime.datetime.strptime(data.nueva_fecha_hora_str, "%Y-%m-%d %H:%M")
+        raise HTTPException(status_code=404, detail="Cita no encontrada")
+    
+    # 1. Validar formato de la nueva fecha y hora
+    try:
+        dt_inicio = datetime.datetime.strptime(data.nueva_fecha_hora_str, "%Y-%m-%d %H:%M")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Formato de fecha inválido")
+
+    if dt_inicio < datetime.datetime.now():
+        raise HTTPException(status_code=400, detail="⚠️ No puedes reprogramar citas en el pasado.")
+
     serv = db.query(models.Servicio).filter(models.Servicio.id == c.servicio_id).first()
-    c.fecha_hora_inicio = dt
-    c.fecha_hora_fin = dt + datetime.timedelta(minutes=serv.duracion_minutos if serv else 30)
+    if not serv:
+        raise HTTPException(status_code=404, detail="Servicio no válido")
+
+    dt_fin = dt_inicio + datetime.timedelta(minutes=serv.duracion_minutos)
+    prof_id = c.profesional_id
+    personal_id_a_verificar = c.personal_id
+
+    # 2. Verificar si el salón o el especialista están bloqueados en esa fecha
+    fecha_str = dt_inicio.strftime("%Y-%m-%d")
+    if db.query(models.DiaBloqueado).filter(
+        models.DiaBloqueado.profesional_id == prof_id, 
+        models.DiaBloqueado.personal_id.is_(None),
+        models.DiaBloqueado.fecha == fecha_str
+    ).first():
+        raise HTTPException(status_code=400, detail="⚠️ El salón está cerrado por vacaciones o día bloqueado en esta fecha.")
+
+    if personal_id_a_verificar and db.query(models.DiaBloqueado).filter(
+        models.DiaBloqueado.profesional_id == prof_id,
+        models.DiaBloqueado.personal_id == personal_id_a_verificar,
+        models.DiaBloqueado.fecha == fecha_str
+    ).first():
+        raise HTTPException(status_code=400, detail="⚠️ El especialista asignado se encuentra ausente en esta fecha.")
+
+    # 3. Verificar jornada laboral del día
+    dias_semana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+    nombre_dia_str = dias_semana[dt_inicio.weekday()]
+    horario = db.query(models.HorarioProfesional).filter(
+        models.HorarioProfesional.profesional_id == prof_id, 
+        models.HorarioProfesional.dia_semana == nombre_dia_str
+    ).first()
+
+    if not horario or not horario.activo:
+        raise HTTPException(status_code=400, detail=f"⚠️ El salón no labora el día {nombre_dia_str}.")
+
+    def a_minutos(h_s):
+        if not h_s: return 0
+        try:
+            p = h_s.strip().split(":")
+            return int(p[0]) * 60 + int(p[1])
+        except Exception:
+            return 0
+
+    t_inicio_min = a_minutos(dt_inicio.strftime("%H:%M"))
+    t_fin_min = t_inicio_min + serv.duracion_minutos
+    aper_min = a_minutos(horario.hora_apertura or "08:00")
+    cierre_max = a_minutos(horario.hora_cierre or "18:00")
+    pausa_ini = a_minutos(horario.hora_cierre_manana or "12:00")
+    pausa_fin = a_minutos(horario.hora_apertura_tarde or "13:00")
+
+    en_horario_general = (aper_min <= t_inicio_min and t_fin_min <= cierre_max)
+    cae_en_pausa = (t_inicio_min < pausa_fin and t_fin_min > pausa_ini)
+
+    if not en_horario_general or cae_en_pausa:
+        raise HTTPException(status_code=400, detail="⚠️ La nueva hora seleccionada está fuera de la jornada laboral o cae en pausa.")
+
+    # 4. Verificar si el especialista ya tiene otra cita cruzada en ese horario (excluyendo la cita actual)
+    if personal_id_a_verificar:
+        conflicto = db.query(models.Cita).filter(
+            models.Cita.id != cita_id,
+            models.Cita.personal_id == personal_id_a_verificar,
+            models.Cita.estado.in_(["pendiente", "confirmada"]),
+            models.Cita.fecha_hora_inicio < dt_fin,
+            models.Cita.fecha_hora_fin > dt_inicio
+        ).first()
+
+        if conflicto:
+            raise HTTPException(status_code=400, detail="⚠️ El especialista ya se encuentra ocupado en este nuevo horario.")
+
+    # 5. Aplicar la reprogramación si pasa todas las validaciones
+    c.fecha_hora_inicio = dt_inicio
+    c.fecha_hora_fin = dt_fin
     c.estado = "confirmada"
     db.commit()
-    enviar_mensaje_whatsapp(c.whatsapp_clienta, "cita_confirmada_admin", [c.nombre_clienta, dt.strftime("%Y-%m-%d %I:%M %p")])
-    return {"mensaje": "Reprogramada"}
+
+    try:
+        enviar_mensaje_whatsapp(c.whatsapp_clienta, "cita_confirmada_admin", [c.nombre_clienta, dt_inicio.strftime("%Y-%m-%d %I:%M %p")])
+    except Exception:
+        pass
+
+    return {"mensaje": "¡Cita reprogramada y verificada con éxito!"}
 
 
 # ==========================================
