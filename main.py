@@ -23,6 +23,8 @@ import json
 import csv
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
 from pydantic import BaseModel
 from passlib.context import CryptContext
 from PIL import Image
@@ -55,7 +57,8 @@ async def lifespan(app: FastAPI):
     # Arranque de hilos en segundo plano al iniciar el servidor
     threading.Thread(target=background_whatsapp_reminder_loop, daemon=True).start()
     threading.Thread(target=tarea_sondeo_bcv, daemon=True).start()
-    logger.info("🟢 [Bonnyn] Hilos en segundo plano (WhatsApp y BCV) iniciados correctamente.")
+    threading.Thread(target=background_backup_loop, daemon=True).start()
+    logger.info("🟢 [Bonnyn] Hilos en segundo plano (WhatsApp, BCV y Respaldo Diario) iniciados correctamente.")
     
     yield
     
@@ -63,7 +66,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Bonnyn - SaaS de Citas, Finanzas & B2B", 
-    version="14.22.0",
+    version="14.23.0",
     lifespan=lifespan
 )
 
@@ -106,12 +109,13 @@ PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 if not PHONE_NUMBER_ID:
     raise RuntimeError("⚠️ ERROR CRÍTICO: La variable de entorno PHONE_NUMBER_ID no está configurada.")
 
-# Configuración SMTP de Gmail protegida por entorno
+# Configuración SMTP de Gmail protegida por entorno con credenciales solicitadas
 SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
-SMTP_USER = os.getenv("SMTP_USER", "bonnynsoporte@gmail.com")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "tpbtwosanzmrjnpf")
-SENDER_EMAIL = os.getenv("SENDER_EMAIL", "bonnynsoporte@gmail.com")
+SMTP_USER = "bonnynsoporte@gmail.com"
+SMTP_PASSWORD = "651255XzA"
+SENDER_EMAIL = "bonnynsoporte@gmail.com"
+RECEPTOR_RESPALDO = "gilmanuel.mg@gmail.com"
 
 # Carpeta estática para logos e imágenes públicas optimizadas
 OS_UPLOAD_DIR = "static/logos"
@@ -120,7 +124,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 # ==========================================
-# HELPER: ZONAS HORARIAS Y LIMPIEZA DE LOGOS
+# HELPER: ZONAS HORARIAS Y RESPALDO DB
 # ==========================================
 
 def get_salon_now(timezone_str: str = "America/Caracas") -> datetime.datetime:
@@ -143,6 +147,86 @@ def remove_old_logo(logo_url: str):
                 logger.info(f"Logo antiguo eliminado: {file_path}")
             except Exception as e:
                 logger.error(f"Error al eliminar logo antiguo {file_path}: {e}")
+
+def ejecutar_envio_respaldo_db() -> bool:
+    """Busca el archivo de base de datos SQLite y lo envía al correo configurado."""
+    posibles_rutas = ["bonnyn.db", "./bonnyn.db", "sql_app.db", "./sql_app.db"]
+    ruta_encontrada = None
+    for r in posibles_rutas:
+        if os.path.exists(r):
+            ruta_encontrada = r
+            break
+
+    if not ruta_encontrada:
+        # Buscar dinámicamente cualquier archivo .db en el directorio actual
+        for f in os.listdir("."):
+            if f.endswith(".db"):
+                ruta_encontrada = f
+                break
+
+    if not ruta_encontrada:
+        logger.error("❌ [RESPALDO] No se encontró ningún archivo de base de datos (.db) en el servidor.")
+        return False
+
+    fecha_hoy = datetime.datetime.now().strftime("%Y-%m-%d")
+    asunto = f"📦 Respaldo Base de Datos Bonnyn - {fecha_hoy}"
+    
+    html_content = f"""
+    <!DOCTYPE html>
+    <html lang="es">
+    <head><meta charset="UTF-8"></head>
+    <body style="font-family: sans-serif; background: #f8fafc; padding: 20px;">
+        <div style="max-width: 480px; margin: 0 auto; background: #fff; border-radius: 24px; padding: 32px; text-align: center; border: 1px solid #fbcfe8;">
+            <h1 style="color: #0f172a; font-size: 20px;">Respaldo Automático / Manual</h1>
+            <p style="color: #64748b;">Adjunto encontrarás el archivo de respaldo de la base de datos de Bonnyn correspondiente al {fecha_hoy}.</p>
+            <div style="background: #f1f5f9; border-radius: 12px; font-size: 14px; font-weight: bold; color: #334155; padding: 12px; margin: 20px 0;">Archivo: {ruta_encontrada}</div>
+        </div>
+    </body>
+    </html>
+    """
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = asunto
+        msg["From"] = f"Bonnyn Soporte <{SENDER_EMAIL}>"
+        msg["To"] = RECEPTOR_RESPALDO
+        msg.attach(MIMEText(html_content, "html"))
+
+        with open(ruta_encontrada, "rb") as f:
+            parte = MIMEBase('application', 'octet-stream')
+            parte.set_payload(f.read())
+            encoders.encode_base64(parte)
+            parte.add_header('Content-Disposition', f'attachment; filename="{os.path.basename(ruta_encontrada)}"')
+            msg.attach(parte)
+
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SMTP_USER, SMTP_PASSWORD)
+            server.sendmail(SENDER_EMAIL, RECEPTOR_RESPALDO, msg.as_string())
+        
+        logger.info(f"✅ [RESPALDO] Base de datos enviada con éxito a {RECEPTOR_RESPALDO}")
+        return True
+    except Exception as e:
+        logger.error(f"❌ [RESPALDO] Error al enviar correo de respaldo: {e}")
+        return False
+
+def background_backup_loop():
+    """Hilo en segundo plano que revisa cada hora si son las 12:00 AM (00:00) para enviar el respaldo."""
+    logger.info("🟢 [RESPALDO] Servicio de respaldo automático a las 12:00 AM iniciado.")
+    ultimo_dia_respaldado = None
+    while True:
+        try:
+            ahora = datetime.datetime.now()
+            # Verificar si son las 00:00 (12 AM) y aún no se ha respaldado hoy
+            if ahora.hour == 0 and ahora.date() != ultimo_dia_respaldado:
+                logger.info("⏰ [RESPALDO] Hora programada alcanzada (12:00 AM). Iniciando respaldo automático...")
+                exito = ejecutar_envio_respaldo_db()
+                if exito:
+                    ultimo_dia_respaldado = ahora.date()
+            time.sleep(1800) # Comprobar cada 30 minutos
+        except Exception as e:
+            logger.error(f"Error en bucle de respaldo automático: {e}")
+            time.sleep(300)
 
 
 class SolicitarRecuperacionSchema(BaseModel):
@@ -213,12 +297,12 @@ CONFIG_ESTADO_PATH = "estado_plataforma.json"
 
 def obtener_estado_plataforma():
     if not os.path.exists(CONFIG_ESTADO_PATH):
-        return {"version": "v14.22.0", "modo_mantenimiento": False, "build_timestamp": int(time.time())}
+        return {"version": "v14.23.0", "modo_mantenimiento": False, "build_timestamp": int(time.time())}
     try:
         with open(CONFIG_ESTADO_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
-        return {"version": "v14.22.0", "modo_mantenimiento": False, "build_timestamp": int(time.time())}
+        return {"version": "v14.23.0", "modo_mantenimiento": False, "build_timestamp": int(time.time())}
 
 def guardar_estado_plataforma(datos):
     try:
@@ -1842,6 +1926,16 @@ def logout_master():
     resp = RedirectResponse(url="/super-admin/login", status_code=status.HTTP_302_FOUND)
     resp.delete_cookie("master_session_token", path="/")
     return resp
+
+@app.get("/api/super-admin/respaldo-manual")
+def admin_respaldo_manual(request: Request):
+    """Endpoint para solicitar el respaldo de la base de datos de manera manual desde el panel de Super Admin."""
+    verificar_sesion_master(request)
+    exito = ejecutar_envio_respaldo_db()
+    if exito:
+        return {"status": "success", "mensaje": f"¡Respaldo enviado con éxito a {RECEPTOR_RESPALDO}!"}
+    else:
+        raise HTTPException(status_code=500, detail="⚠️ Error al generar o enviar el archivo de respaldo por correo.")
 
 @app.get("/api/super-admin/metricas")
 def admin_metricas_globales(request: Request, db: Session = Depends(get_db)):
