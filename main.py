@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, Request, Response, status, UploadFile, File, Form, Cookie, BackgroundTasks
-from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
@@ -1813,7 +1813,7 @@ def vista_login_master(request: Request):
 
 @app.post("/api/super-admin/login")
 @limiter.limit("5/minute")
-def procesar_login_master(request: Request, email: str = Form(...), password: str = Form(...), response: Response = None):
+def procesar_login_master(request: Request, email: str = Form(...), password: str = Form(...)):
     if email.strip().lower() == SUPER_ADMIN_EMAIL.lower() and password == SUPER_ADMIN_PASSWORD:
         resp = RedirectResponse(url="/super-admin", status_code=status.HTTP_302_FOUND)
         resp.set_cookie(
