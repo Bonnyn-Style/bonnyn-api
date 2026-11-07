@@ -89,8 +89,13 @@ async def limit_upload_size(request: Request, call_next):
 # BLINDAJE DE SEGURIDAD: Eliminación del fallback inseguro para SECRET_KEY
 SECRET_KEY = os.getenv("SECRET_KEY")
 if not SECRET_KEY:
-    raise RuntimeError("⚠️ ERROR CRÍTICO: La variable de entorno SECRET_KEY no está configurada. El servidor não puede iniciar por motivos de seguridad.")
+    raise RuntimeError("⚠️ ERROR CRÍTICO: La variable de entorno SECRET_KEY no está configurada. El servidor no puede iniciar por motivos de seguridad.")
 ALGORITHM = "HS256"
+
+# CREDENCIALES EXCLUSIVAS DE SUPER ADMIN (VARIABLES DE ENTORNO)
+SUPER_ADMIN_EMAIL = os.getenv("SUPER_ADMIN_EMAIL", "admin@bonnyn.com")
+SUPER_ADMIN_PASSWORD = os.getenv("SUPER_ADMIN_PASSWORD", "Bonnyn#2026$MasterKey!")
+MASTER_TOKEN_SECRET = os.getenv("MASTER_TOKEN_SECRET", "llave_ultra_secreta_bonnyn_master_2026")
 
 # BLINDAJE DE SEGURIDAD: Credenciales de WhatsApp obligatorias por entorno
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
@@ -155,8 +160,8 @@ class NotaClinicaSchema(BaseModel):
     diagnostico_notas: str
 
 class WebhookPagoInput(BaseModel):
-    referencia: str       # Referencia bancaria extraída de la notificación
-    monto_usd: float      # Monto in USD o equivalente reportado
+    referencia: str
+    monto_usd: float
     banco_emisor: str = "N/A"
 
 class ConfiguracionPagoUpdate(BaseModel):
@@ -992,7 +997,6 @@ def solicitar_recuperacion(request: Request, data: SolicitarRecuperacionSchema, 
         db.add(models.CodigoRecuperacion(correo=correo, codigo=codigo, expira_at=expira_dt))
         db.commit()
 
-    # 🚀 Encolar el envío del correo en segundo plano (No bloquea la respuesta HTTP)
     background_tasks.add_task(enviar_correo_codigo_bonnyn, correo, codigo)
     
     return {"mensaje": "Código enviado con éxito."}
@@ -1243,7 +1247,6 @@ def reportar_pago_suscripcion(data: schemas.PagoSuscripcionReport, db: Session =
     if not ref_limpia or len(ref_limpia) < 4:
         raise HTTPException(status_code=400, detail="⚠️ La referencia de pago es inválida o muy corta (mínimo 4 dígitos).")
     
-    # 🛡️ FASE 1: Reforzar comprobación de duplicados con referencia normalizada
     duplicado_pago = db.query(models.PagoSuscripcion).filter(
         models.PagoSuscripcion.referencia_pago == ref_limpia,
         models.PagoSuscripcion.estado_pago.in_(["verificando", "aprobado"])
@@ -1268,7 +1271,6 @@ def reportar_pago_suscripcion(data: schemas.PagoSuscripcionReport, db: Session =
 def webhook_auto_aprobar_pago(datos: WebhookPagoInput, db: Session = Depends(get_db)):
     ref_limpia = datos.referencia.strip()
 
-    # Blindaje de Idempotencia: Verificar si ya fue procesado con éxito
     pago_suscripcion_ya_aprobado = db.query(models.PagoSuscripcion).filter(
         models.PagoSuscripcion.referencia_pago == ref_limpia,
         models.PagoSuscripcion.estado_pago == "aprobado"
@@ -1624,7 +1626,6 @@ def agendar_cita(request: Request, cita: schemas.CitaCreate, db: Session = Depen
     if not ref_movil or len(ref_movil) < 4:
         raise HTTPException(status_code=400, detail="⚠️ La referencia de pago es obligatoria (mínimo 4 dígitos).")
     
-    # 🛡️ FASE 1: Reforzar comprobación de duplicados de citas con referencia normalizada
     duplicado_cita = db.query(models.Cita).filter(
         models.Cita.referencia_pago_movil == ref_movil,
         models.Cita.estado.in_(["pendiente", "confirmada"])
@@ -1795,10 +1796,48 @@ def reprogramar_cita(cita_id: int, data: schemas.CitaReprogramar, db: Session = 
 
 
 # ==========================================
-# SUPER ADMIN
+# SUPER ADMIN Y SEGURIDAD ESTRICTA MASTER
 # ==========================================
+def verificar_sesion_master(request: Request):
+    token_sesion = request.cookies.get("master_session_token")
+    if not token_sesion or token_sesion != MASTER_TOKEN_SECRET:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acceso Denegado: Credenciales de Administrador Global requeridas."
+        )
+    return True
+
+@app.get("/super-admin/login", response_class=HTMLResponse)
+def vista_login_master(request: Request):
+    return templates.TemplateResponse(request, "login_admin.html", {})
+
+@app.post("/api/super-admin/login")
+@limiter.limit("5/minute")
+def procesar_login_master(request: Request, email: str = Form(...), password: str = Form(...), response: Response = None):
+    if email.strip().lower() == SUPER_ADMIN_EMAIL.lower() and password == SUPER_ADMIN_PASSWORD:
+        resp = RedirectResponse(url="/super-admin", status_code=status.HTTP_302_FOUND)
+        resp.set_cookie(
+            key="master_session_token",
+            value=MASTER_TOKEN_SECRET,
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            max_age=86400,
+            path="/"
+        )
+        return resp
+    else:
+        raise HTTPException(status_code=401, detail="Credenciales Master incorrectas.")
+
+@app.get("/super-admin/logout")
+def logout_master():
+    resp = RedirectResponse(url="/super-admin/login", status_code=status.HTTP_302_FOUND)
+    resp.delete_cookie("master_session_token", path="/")
+    return resp
+
 @app.get("/api/super-admin/metricas")
-def admin_metricas_globales(db: Session = Depends(get_db)):
+def admin_metricas_globales(request: Request, db: Session = Depends(get_db)):
+    verificar_sesion_master(request)
     total_salones = db.query(models.Profesional).count()
     salones_activos = db.query(models.Profesional).filter(models.Profesional.estado_cuenta == "activo", models.Profesional.plan != "suspendido_multa").count()
     total_citas = db.query(models.Cita).count()
@@ -1820,7 +1859,8 @@ def admin_metricas_globales(db: Session = Depends(get_db)):
     }
 
 @app.get("/api/super-admin/socios")
-def admin_obtener_socios(db: Session = Depends(get_db)):
+def admin_obtener_socios(request: Request, db: Session = Depends(get_db)):
+    verificar_sesion_master(request)
     socios = db.query(models.Profesional).all()
     resultado = []
     for s in socios:
@@ -1849,7 +1889,8 @@ def admin_obtener_socios(db: Session = Depends(get_db)):
     return resultado
 
 @app.get("/api/super-admin/pagos-pendientes")
-def admin_pagos_pendientes(db: Session = Depends(get_db)):
+def admin_pagos_pendientes(request: Request, db: Session = Depends(get_db)):
+    verificar_sesion_master(request)
     pagos = db.query(models.PagoSuscripcion).filter(models.PagoSuscripcion.estado_pago == "verificando").all()
     resultado = []
     for p in pagos:
@@ -1868,7 +1909,8 @@ def admin_pagos_pendientes(db: Session = Depends(get_db)):
     return resultado
 
 @app.get("/api/super-admin/todos-los-pagos")
-def admin_todos_los_pagos(db: Session = Depends(get_db)):
+def admin_todos_los_pagos(request: Request, db: Session = Depends(get_db)):
+    verificar_sesion_master(request)
     pagos = db.query(models.PagoSuscripcion).order_by(models.PagoSuscripcion.fecha_pago.desc()).limit(200).all()
     resultado = []
     for p in pagos:
@@ -1886,14 +1928,15 @@ def admin_todos_los_pagos(db: Session = Depends(get_db)):
     return resultado
 
 @app.post("/api/super-admin/pagos/{pago_id}/aprobar")
-def admin_aprobar_pago(pago_id: int, db: Session = Depends(get_db)):
+def admin_aprobar_pago(pago_id: int, request: Request, db: Session = Depends(get_db)):
+    verificar_sesion_master(request)
     p = db.query(models.PagoSuscripcion).filter(models.PagoSuscripcion.id == pago_id).first()
     if p:
         prof = db.query(models.Profesional).filter(models.Profesional.id == p.profesional_id).first()
         if prof:
             if p.nuevo_plan == "multa_reactivacion" or prof.plan == "suspendido_multa":
                 prof.plan = "gratuito"
-                profesional.estado_cuenta = "activo"
+                prof.estado_cuenta = "activo"
                 prof.monto_multa_pendiente = 0.0
                 prof.motivo_multa = None
             else:
@@ -1907,7 +1950,8 @@ def admin_aprobar_pago(pago_id: int, db: Session = Depends(get_db)):
     return {"mensaje": "Aprobado"}
 
 @app.post("/api/super-admin/pagos/{pago_id}/rechazar")
-def admin_rechazar_pago(pago_id: int, db: Session = Depends(get_db)):
+def admin_rechazar_pago(pago_id: int, request: Request, db: Session = Depends(get_db)):
+    verificar_sesion_master(request)
     p = db.query(models.PagoSuscripcion).filter(models.PagoSuscripcion.id == pago_id).first()
     if p:
         p.estado_pago = "rechazado"
@@ -1915,7 +1959,8 @@ def admin_rechazar_pago(pago_id: int, db: Session = Depends(get_db)):
     return {"mensaje": "Rechazado"}
 
 @app.patch("/api/super-admin/socios/{socio_id}/estado")
-def admin_cambiar_estado_socio(socio_id: int, estado: str, db: Session = Depends(get_db)):
+def admin_cambiar_estado_socio(socio_id: int, estado: str, request: Request, db: Session = Depends(get_db)):
+    verificar_sesion_master(request)
     s = db.query(models.Profesional).filter(models.Profesional.id == socio_id).first()
     if s:
         s.estado_cuenta = sanitizar_texto(estado).lower()
@@ -1923,7 +1968,8 @@ def admin_cambiar_estado_socio(socio_id: int, estado: str, db: Session = Depends
     return {"mensaje": "Actualizado"}
 
 @app.put("/api/super-admin/socios/{socio_id}/plan")
-def admin_cambiar_plan_socio(socio_id: int, data: dict, db: Session = Depends(get_db)):
+def admin_cambiar_plan_socio(socio_id: int, data: dict, request: Request, db: Session = Depends(get_db)):
+    verificar_sesion_master(request)
     s = db.query(models.Profesional).filter(models.Profesional.id == socio_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="Socio no encontrado")
@@ -1951,6 +1997,12 @@ def vista_registro(request: Request): return templates.TemplateResponse(request,
 def vista_login(request: Request): return templates.TemplateResponse(request, "login.html", {})
 @app.get("/admin", response_class=HTMLResponse)
 def vista_admin(request: Request): return templates.TemplateResponse(request, "admin.html", {})
+
 @app.get("/super-admin", response_class=HTMLResponse)
 @app.get("/super_admin", response_class=HTMLResponse)
-def vista_super_admin(request: Request): return templates.TemplateResponse(request, "super_admin.html", {})
+def vista_super_admin(request: Request):
+    try:
+        verificar_sesion_master(request)
+        return templates.TemplateResponse(request, "super_admin.html", {})
+    except HTTPException:
+        return RedirectResponse(url="/super-admin/login", status_code=status.HTTP_302_FOUND)

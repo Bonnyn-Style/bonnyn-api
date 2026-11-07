@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acceso Master | Bonnyn</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-slate-950 text-white font-sans antialiased flex items-center justify-center min-h-screen p-4">
+    <div class="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl space-y-6">
+        <div class="text-center space-y-2">
+            <div class="w-12 h-12 bg-pink-600/20 text-pink-500 rounded-2xl flex items-center justify-center mx-auto text-xl border border-pink-500/30">
+                <i class="fa-solid fa-user-shield"></i>
+            </div>
+            <h1 class="text-2xl font-black text-white">Acceso Master Bonnyn</h1>
+            <p class="text-xs text-slate-400">Introduce tus credenciales de Administrador Global</p>
+        </div>
+
+        <form action="/api/super-admin/login" method="POST" class="space-y-4 text-xs">
+            <div class="space-y-1">
+                <label class="font-bold text-slate-300">Usuario / Email Master</label>
+                <input type="email" name="email" required placeholder="admin@bonnyn.com" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-pink-500 transition">
+            </div>
+            <div class="space-y-1">
+                <label class="font-bold text-slate-300">Contraseña Master</label>
+                <input type="password" name="password" required placeholder="••••••••••••" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-pink-500 transition">
+            </div>
+            <button type="submit" class="w-full py-3.5 bg-pink-600 hover:bg-pink-500 text-white font-black rounded-xl uppercase tracking-wider transition shadow-lg shadow-pink-600/20">
+                Iniciar Sesión Master
+            </button>
+        </form>
+    </div>
+</body>
+</html>
