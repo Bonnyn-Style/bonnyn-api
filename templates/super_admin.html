@@ -41,17 +41,14 @@
                 <p class="text-xs text-slate-400">Introduce tus credenciales de propietario maestro para desbloquear la plataforma.</p>
             </div>
 
-            <form onsubmit="autenticarSuperAdmin(event)" class="space-y-4 text-xs">
+            <form action="/api/super-admin/login" method="POST" class="space-y-4 text-xs">
                 <div>
                     <label class="block font-bold text-slate-300 mb-1">Correo Electrónico Propietario</label>
-                    <input type="email" id="master-email" required placeholder="gilmanuel.mg@gmail.com" class="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white outline-none focus:border-pink-500 font-bold">
+                    <input type="email" name="email" required placeholder="gilmanuel.mg@gmail.com" class="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white outline-none focus:border-pink-500 font-bold">
                 </div>
                 <div>
                     <label class="block font-bold text-slate-300 mb-1">Contraseña Maestro</label>
-                    <input type="password" id="master-pass" required placeholder="••••••••" class="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white outline-none focus:border-pink-500 font-bold">
-                </div>
-                <div id="login-error-msg" class="hidden text-rose-400 font-bold text-[11px] text-center bg-rose-500/10 p-2 rounded-xl border border-rose-500/20">
-                    ❌ Credenciales incorrectas o acceso denegado.
+                    <input type="password" name="password" required placeholder="••••••••" class="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white outline-none focus:border-pink-500 font-bold">
                 </div>
                 <button type="submit" class="w-full bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white font-black p-3.5 rounded-xl uppercase tracking-wider transition shadow-lg shadow-pink-600/20">
                     Desbloquear Panel Master 🔒
@@ -390,7 +387,7 @@
 
     <script>
         // ========================================================
-        // INTERCEPTOR GLOBAL DE EXPIRACIÓN DE TOKEN JWT (401)
+        // INTERCEPTOR GLOBAL DE EXPIRACIÓN DE TOKEN (401)
         // ========================================================
         const originalFetch = window.fetch;
         window.fetch = async function(...args) {
@@ -401,14 +398,9 @@
                 if (typeof url === 'string' && (url.includes('/login') || url.includes('/logout'))) {
                     return response;
                 }
-                
-                console.warn("⚠️ Token JWT expirado o no autorizado (401) en Super Admin. Limpiando sesión...");
-                sessionStorage.removeItem('master_authenticated');
-                
-                alert("Tu sesión de Super Admin ha expirado por seguridad. Por favor, vuelve a iniciar sesión.");
+                console.warn("⚠️ Token de Super Admin expirado o no autorizado (401).");
                 window.location.reload();
             }
-            
             return response;
         };
 
@@ -416,43 +408,28 @@
         let sociosGlobal = [];
         let tasaBcvGlobal = 889.26; // Tasa de respaldo por defecto
 
-        // CREDENCIALES PRIVADAS DEL PROPIETARIO MASTER
-        const MASTER_EMAIL_VALIDO = "gilmanuel.mg@gmail.com";
-        const MASTER_PASS_VALIDO = "651255XzA";
-
-        function verificarAutenticacionPrevia() {
-            let authState = sessionStorage.getItem('master_authenticated');
-            if (authState === 'true') {
-                document.getElementById('modal-login-master').classList.add('hidden');
-                document.getElementById('panel-principal-master').classList.remove('hidden');
-                cargarTodoSuperAdmin();
-            } else {
-                document.getElementById('modal-login-master').classList.add('hidden'); 
-                document.getElementById('panel-principal-master').classList.remove('hidden');
-                cargarTodoSuperAdmin();
+        // VERIFICAR SESIÓN REAL CON EL BACKEND AL CARGAR
+        async function verificarAutenticacionPrevia() {
+            try {
+                let res = await fetch('/api/super-admin/metricas');
+                if (res.ok) {
+                    // Si el token es válido, ocultamos el modal de login y cargamos el panel
+                    document.getElementById('modal-login-master').classList.add('hidden');
+                    document.getElementById('panel-principal-master').classList.remove('hidden');
+                    cargarTodoSuperAdmin();
+                } else {
+                    // Si no hay sesión válida (401 o 403), mostramos el login
+                    document.getElementById('modal-login-master').classList.remove('hidden');
+                    document.getElementById('panel-principal-master').classList.add('hidden');
+                }
+            } catch(e) {
+                document.getElementById('modal-login-master').classList.remove('hidden');
             }
         }
 
-        function autenticarSuperAdmin(event) {
-            event.preventDefault();
-            let emailInput = document.getElementById('master-email').value.trim();
-            let passInput = document.getElementById('master-pass').value.trim();
-            let errorMsg = document.getElementById('login-error-msg');
-
-            if (emailInput === MASTER_EMAIL_VALIDO && passInput === MASTER_PASS_VALIDO) {
-                sessionStorage.setItem('master_authenticated', 'true');
-                errorMsg.classList.add('hidden');
-                document.getElementById('modal-login-master').classList.add('hidden');
-                document.getElementById('panel-principal-master').classList.remove('hidden');
-                cargarTodoSuperAdmin();
-            } else {
-                errorMsg.classList.remove('hidden');
-            }
-        }
-
+        // CERRAR SESIÓN REAL MEDIANTE BACKEND
         function cerrarSesionMaster() {
-            sessionStorage.removeItem('master_authenticated');
-            window.location.reload();
+            window.location.href = "/super-admin/logout";
         }
 
         // ========================================================
@@ -471,6 +448,10 @@
                 }
 
                 let resMetricas = await fetch('/api/super-admin/metricas');
+                if(resMetricas.status === 403 || resMetricas.status === 401) {
+                    window.location.reload();
+                    return;
+                }
                 let met = await resMetricas.json();
                 document.getElementById('metrica-total-salones').innerText = met.total_salones;
                 document.getElementById('metrica-salones-activos').innerText = met.salones_activos;
