@@ -83,8 +83,8 @@
             </div>
 
             <div class="flex items-center gap-2 flex-wrap justify-center">
-                <button onclick="solicitarRespaldoManual()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-2xl text-xs transition flex items-center gap-2 shadow-lg shadow-emerald-600/20" title="Envía un respaldo de la base de datos al correo configurado">
-                    <i class="fa-solid fa-box-archive"></i> 📦 Respaldo DB
+                <button onclick="descargarRespaldoDirecto()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-2xl text-xs transition flex items-center gap-2 shadow-lg shadow-emerald-600/20" title="Descarga la base de datos directamente a tu equipo">
+                    <i class="fa-solid fa-download"></i> 📥 Descargar Base de Datos
                 </button>
                 <button onclick="abrirModalConfigPago()" class="px-4 py-2 bg-pink-600 hover:bg-pink-500 text-white font-bold rounded-2xl text-xs transition flex items-center gap-2 shadow-lg shadow-pink-600/20">
                     <i class="fa-solid fa-wallet"></i> Configurar Pasarelas
@@ -97,9 +97,6 @@
                 </button>
             </div>
         </header>
-
-        <!-- MENSAJE DE ESTADO DE RESPALDO MANUAL -->
-        <div id="estadoRespaldoContainer" class="hidden glass-card p-4 rounded-2xl text-xs text-center font-bold"></div>
 
         <!-- TARJETAS DE MÉTRICAS GLOBALES -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -459,36 +456,10 @@
         }
 
         // ========================================================
-        // FUNCIÓN DE RESPALDO MANUAL DIRECTO DESDE SUPER ADMIN
+        // FUNCIÓN DE DESCARGA DIRECTA DE LA BASE DE DATOS
         // ========================================================
-        async function solicitarRespaldoManual() {
-            const estadoDiv = document.getElementById('estadoRespaldoContainer');
-            estadoDiv.classList.remove('hidden');
-            estadoDiv.innerText = "⏳ Generando respaldo de base de datos y enviando al correo...";
-            estadoDiv.className = "glass-card p-4 rounded-2xl text-xs text-center font-bold text-amber-400 border border-amber-500/20";
-
-            try {
-                let res = await fetch('/api/super-admin/respaldo-manual', {
-                    method: 'GET'
-                });
-                let data = await res.json();
-
-                if (res.ok) {
-                    estadoDiv.innerText = "✅ " + data.mensaje;
-                    estadoDiv.className = "glass-card p-4 rounded-2xl text-xs text-center font-bold text-emerald-400 border border-emerald-500/20";
-                } else {
-                    estadoDiv.innerText = "❌ Error: " + (data.detail || "No se pudo completar el respaldo");
-                    estadoDiv.className = "glass-card p-4 rounded-2xl text-xs text-center font-bold text-rose-400 border border-rose-500/20";
-                }
-            } catch (e) {
-                estadoDiv.innerText = "❌ Error de conexión con el servidor al solicitar el respaldo.";
-                estadoDiv.className = "glass-card p-4 rounded-2xl text-xs text-center font-bold text-rose-400 border border-rose-500/20";
-            }
-
-            // Ocultar mensaje después de 8 segundos
-            setTimeout(() => {
-                estadoDiv.classList.add('hidden');
-            }, 8000);
+        function descargarRespaldoDirecto() {
+            window.location.href = "/api/super-admin/descargar-respaldo-db";
         }
 
         async function cargarTodoSuperAdmin() {
