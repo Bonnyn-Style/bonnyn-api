@@ -1,8 +1,12 @@
+# ==========================================
+# ARCHIVO COMPLETO: main.py (Bonnyn)
+# ==========================================
 from fastapi import FastAPI, Depends, HTTPException, Request, Response, status, UploadFile, File, Form, Cookie, BackgroundTasks
 from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 import models
 from database import engine, get_db
 import schemas
@@ -21,6 +25,13 @@ import logging
 import pytz
 import json
 import csv
+import pandas as pd
+
+# Openpyxl para generación de hojas de cálculo profesionales
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
+
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
@@ -65,7 +76,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Bonnyn - SaaS de Citas, Finanzas & B2B", 
-    version="14.23.0",
+    version="14.25.0",
     lifespan=lifespan
 )
 
@@ -208,6 +219,16 @@ class VersionSchema(BaseModel):
 class MantenimientoSchema(BaseModel):
     activo: bool
 
+class CitaSocioManualSchema(BaseModel):
+    profesional_id: int
+    servicio_id: int
+    personal_id: int
+    nombre_clienta: str
+    whatsapp_clienta: str
+    fecha_hora_inicio_str: str
+    referencia_pago_movil: str = "ManualSocio"
+    monto_pagado: float = 0.0
+
 
 # ==========================================
 # GESTIÓN DE ESTADO GLOBAL DE PLATAFORMA
@@ -216,12 +237,12 @@ CONFIG_ESTADO_PATH = "estado_plataforma.json"
 
 def obtener_estado_plataforma():
     if not os.path.exists(CONFIG_ESTADO_PATH):
-        return {"version": "v14.23.0", "modo_mantenimiento": False, "build_timestamp": int(time.time())}
+        return {"version": "v14.25.0", "modo_mantenimiento": False, "build_timestamp": int(time.time())}
     try:
         with open(CONFIG_ESTADO_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
-        return {"version": "v14.23.0", "modo_mantenimiento": False, "build_timestamp": int(time.time())}
+        return {"version": "v14.25.0", "modo_mantenimiento": False, "build_timestamp": int(time.time())}
 
 def guardar_estado_plataforma(datos):
     try:
@@ -268,8 +289,20 @@ def sanitizar_texto(texto: str) -> str:
         return ""
     return html.escape(str(texto).strip())
 
-def leer_tasa_local():
+def leer_tasa_local(db: Session = None):
+    """Consulta la tasa centralizada en BD con respaldo en archivo local (100% gratuito)."""
     global CACHE_TASA_MEMORIA
+    try:
+        if db:
+            config_db = db.query(models.ConfiguracionPlataforma).first()
+            if config_db and getattr(config_db, "tasa_bcv_manual", 0) > 0:
+                val_db = float(config_db.tasa_bcv_manual)
+                CACHE_TASA_MEMORIA["valor"] = val_db
+                CACHE_TASA_MEMORIA["ultima_actualizacion"] = datetime.datetime.now()
+                return val_db
+    except Exception:
+        pass
+
     ahora = datetime.datetime.now()
     if CACHE_TASA_MEMORIA["ultima_actualizacion"] and (ahora - CACHE_TASA_MEMORIA["ultima_actualizacion"]).total_seconds() < 1800:
         return CACHE_TASA_MEMORIA["valor"]
@@ -296,36 +329,34 @@ def guardar_tasa_local(valor):
         pass
 
 def tarea_sondeo_bcv():
+    """Sonda automatizada con resiliencia y pausas para buscar la tasa oficial del BCV."""
     while True:
         try:
             ahora = datetime.datetime.now()
             hora = ahora.hour
-            es_ventana_tarde = (16 <= hora < 19)
-            es_ventana_madrugada = (4 <= hora < 5)
+            es_ventana_activa = (8 <= hora <= 22)
 
-            if es_ventana_tarde or es_ventana_madrugada:
-                response = httpx.get("https://ve.dolarapi.com/v1/dolares/oficial", timeout=5.0)
+            if es_ventana_activa:
+                response = httpx.get("https://ve.dolarapi.com/v1/dolares/oficial", timeout=10.0)
                 if response.status_code == 200:
                     data = response.json()
                     precio = data.get("promedio") or data.get("precio")
+                    
                     if precio and float(precio) > 0:
                         nuevo_valor = float(precio)
                         tasa_actual = leer_tasa_local()
+                        
                         if nuevo_valor != tasa_actual:
                             guardar_tasa_local(nuevo_valor)
-                            logger.info(f"[SONDA BCV] Tasa actualizada: {nuevo_valor}")
-                            if es_ventana_tarde:
-                                time.sleep(1800)
-                        else:
-                            time.sleep(180)
-                            continue
-            time.sleep(1200)
+                            logger.info(f"[SONDA BCV AUTOMÁTICA] Tasa actualizada con éxito: {nuevo_valor}")
+                        
+            time.sleep(3600)
         except Exception as e:
-            logger.error(f"Error en sonda BCV: {e}")
-            time.sleep(300)
+            logger.error(f"⚠️ [Recuperado] Error transitorio en sonda automática BCV: {e}")
+            time.sleep(600)
 
 def background_whatsapp_reminder_loop():
-    logger.info("Iniciando servicio de notificaciones de WhatsApp y barrido automático de citas con sesiones independientes...")
+    logger.info("Iniciando servicio de notificaciones de WhatsApp y barrido automático de citas con resiliencia...")
     from database import SessionLocal
     while True:
         db = None
@@ -348,9 +379,13 @@ def background_whatsapp_reminder_loop():
             ).all()
 
             for c in citas_2h:
-                enviar_mensaje_whatsapp(c.whatsapp_clienta, "recordatorio_cita_2h", [c.nombre_clienta, c.fecha_hora_inicio.strftime("%I:%M %p")])
-                c.notif_2h_enviada = True
-                db.commit()
+                try:
+                    enviar_mensaje_whatsapp(c.whatsapp_clienta, "recordatorio_cita_2h", [c.nombre_clienta, c.fecha_hora_inicio.strftime("%I:%M %p")])
+                    c.notif_2h_enviada = True
+                    db.commit()
+                except Exception as sub_err:
+                    logger.error(f"Error enviando WhatsApp individual (2h): {sub_err}")
+                    db.rollback()
 
             t_30m_min = ahora + datetime.timedelta(minutes=25)
             t_30m_max = ahora + datetime.timedelta(minutes=35)
@@ -364,11 +399,16 @@ def background_whatsapp_reminder_loop():
             ).all()
 
             for c in citas_30m:
-                enviar_mensaje_whatsapp(c.whatsapp_clienta, "recordatorio_cita_30m", [c.nombre_clienta, c.fecha_hora_inicio.strftime("%I:%M %p")])
-                c.notif_30m_enviada = True
-                db.commit()
+                try:
+                    enviar_mensaje_whatsapp(c.whatsapp_clienta, "recordatorio_cita_30m", [c.nombre_clienta, c.fecha_hora_inicio.strftime("%I:%M %p")])
+                    c.notif_30m_enviada = True
+                    db.commit()
+                except Exception as sub_err:
+                    logger.error(f"Error enviando WhatsApp individual (30m): {sub_err}")
+                    db.rollback()
         except Exception as e:
-            logger.error(f"Error en bucle de WhatsApp: {e}")
+            logger.error(f"⚠️ [Recuperado] Error transitorio en bucle de WhatsApp: {e}")
+            time.sleep(10)
         finally:
             if db:
                 db.close()
@@ -445,7 +485,7 @@ def expirar_citas_pendientes_antiguas(db: Session, profesional_id: int = None):
     db.commit()
 
 def completar_citas_pasadas_automaticamente(db: Session, profesional_id: int = None):
-    ahora = datetime.datetime.now()
+    ahora = get_salon_now("America/Caracas").replace(tzinfo=None)
     query = db.query(models.Cita).filter(models.Cita.estado == "confirmada", models.Cita.fecha_hora_fin < ahora)
     if profesional_id:
         query = query.filter(models.Cita.profesional_id == profesional_id)
@@ -694,29 +734,152 @@ def registrar_venta_directa(data: VentaDirectaSchema, db: Session = Depends(get_
             raise HTTPException(status_code=400, detail="⚠️ Stock insuficiente para registrar la venta directa.")
         
         producto.stock_actual -= float(data.cantidad)
+        total_venta = float(data.cantidad) * float(producto.precio_venta or 0.0)
+        
+        if hasattr(models, 'VentaDirectaRegistro'):
+            nueva_venta = models.VentaDirectaRegistro(
+                profesional_id=producto.profesional_id,
+                producto_id=producto.id,
+                nombre_producto=producto.nombre,
+                cantidad=float(data.cantidad),
+                precio_unitario=float(producto.precio_venta or 0.0),
+                total_usd=total_venta,
+                fecha_venta=datetime.datetime.now()
+            )
+            db.add(nueva_venta)
+        elif hasattr(models, 'VentaProducto'):
+            nueva_venta = models.VentaProducto(
+                profesional_id=producto.profesional_id,
+                producto_id=producto.id,
+                cantidad=float(data.cantidad),
+                total_usd=total_venta
+            )
+            db.add(nueva_venta)
+            
         db.commit()
-        return {"mensaje": "Venta directa registrada y stock descontado con éxito."}
+        return {
+            "mensaje": "¡Venta directa registrada, stock descontado e ingresos sumados a la contabilidad con éxito!",
+            "total_usd": total_venta
+        }
     raise HTTPException(status_code=500, detail="Módulo no disponible.")
 
 
-@app.get("/api/profesional/{profesional_id}/exportar-reporte-contable")
-def exportar_reporte_contable(
+# ==========================================
+# ENDPOINT: DASHBOARD FINANCIERO Y ANALÍTICO
+# ==========================================
+@app.get("/api/profesional/{profesional_id}/dashboard-stats")
+def obtener_dashboard_stats(
     profesional_id: int, 
-    formato: str = "csv", 
-    especialista: str = "todos", 
     periodo: str = "mes", 
     db: Session = Depends(get_db)
 ):
     prof = db.query(models.Profesional).filter(models.Profesional.id == profesional_id).first()
     if not prof:
-        raise HTTPException(status_code=404, detail="Salón no encontrado")
+        raise HTTPException(status_code=404, detail="Salón no encontrado.")
+
+    citas = db.query(models.Cita).filter(models.Cita.profesional_id == profesional_id).all()
+
+    hoy = datetime.datetime.now()
+    citas_filtradas = []
+    for c in citas:
+        if not c.fecha_hora_inicio: 
+            continue
+        f_cita = c.fecha_hora_inicio
+        if periodo == "hoy" and f_cita.date() != hoy.date(): 
+            continue
+        if periodo == "semana" and (hoy - f_cita).days > 7: 
+            continue
+        if periodo == "mes" and (f_cita.month != hoy.month or f_cita.year != hoy.year): 
+            continue
+        citas_filtradas.append(c)
+
+    citas_completadas = sum(1 for c in citas_filtradas if c.estado == "completada")
+    total_bruto_citas = sum(float(c.monto_pagado or 0.0) for c in citas_filtradas if c.estado != "cancelada")
+    
+    total_bruto_ventas = 0.0
+    if hasattr(models, 'VentaDirectaRegistro'):
+        ventas_reg = db.query(models.VentaDirectaRegistro).filter(models.VentaDirectaRegistro.profesional_id == profesional_id).all()
+        for vr in ventas_reg:
+            if not vr.fecha_venta: continue
+            f_v = vr.fecha_venta
+            if periodo == "hoy" and f_v.date() != hoy.date(): continue
+            if periodo == "semana" and (hoy - f_v).days > 7: continue
+            if periodo == "mes" and (f_v.month != hoy.month or f_v.year != hoy.year): continue
+            total_bruto_ventas += float(vr.total_usd or 0.0)
+    elif hasattr(models, 'VentaProducto'):
+        ventas_prod = db.query(models.VentaProducto).filter(models.VentaProducto.profesional_id == profesional_id).all()
+        for vp in ventas_prod:
+            if not vp.fecha_venta: continue
+            f_venta = vp.fecha_venta
+            if periodo == "hoy" and f_venta.date() != hoy.date(): continue
+            if periodo == "semana" and (hoy - f_venta).days > 7: continue
+            if periodo == "mes" and (f_venta.month != hoy.month or f_venta.year != hoy.year): continue
+            total_bruto_ventas += float(vp.total_usd or 0.0)
+
+    total_bruto = total_bruto_citas + total_bruto_ventas
+
+    total_gastos = 0.0
+    if hasattr(models, 'GastoLogistica'):
+        gastos = db.query(models.GastoLogistica).filter(models.GastoLogistica.profesional_id == profesional_id).all()
+        total_gastos = sum(float(g.monto_usd or 0.0) for g in gastos)
+
+    neto_real = total_bruto - total_gastos
+
+    ingresos_por_fecha = {}
+    for c in citas_filtradas:
+        if c.estado == "cancelada" or not c.fecha_hora_inicio:
+            continue
+        f_str = c.fecha_hora_inicio.strftime("%Y-%m-%d")
+        ingresos_por_fecha[f_str] = ingresos_por_fecha.get(f_str, 0.0) + float(c.monto_pagado or 0.0)
+
+    fechas_ordenadas = sorted(ingresos_por_fecha.keys())
+    
+    completadas_cnt = sum(1 for c in citas_filtradas if c.estado == "completada")
+    pendientes_cnt = sum(1 for c in citas_filtradas if c.estado == "pendiente")
+    confirmadas_cnt = sum(1 for c in citas_filtradas if c.estado == "confirmada")
+    canceladas_cnt = sum(1 for c in citas_filtradas if c.estado == "cancelada")
+
+    simbolo_moneda = prof.simbolo_moneda or "$"
+
+    return {
+        "kpis": {
+            "simbolo": simbolo_moneda,
+            "total_bruto": round(total_bruto, 2),
+            "citas_completadas": citas_completadas,
+            "total_gastos": round(total_gastos, 2),
+            "neto_real": round(neto_real, 2)
+        },
+        "grafico_tendencia": {
+            "labels": fechas_ordenadas,
+            "valores": [round(ingresos_por_fecha[f], 2) for f in fechas_ordenadas]
+        },
+        "grafico_estados": {
+            "labels": ["Completadas", "Pendientes", "Confirmadas", "Canceladas"],
+            "valores": [completadas_cnt, pendientes_cnt, confirmadas_cnt, canceladas_cnt]
+        }
+    }
+
+
+# ==========================================
+# ENDPOINT: ESTADÍSTICAS Y DATOS ANALÍTICOS
+# ==========================================
+@app.get("/api/profesional/{profesional_id}/estadisticas")
+def obtener_estadisticas_profesional(
+    profesional_id: int, 
+    periodo: str = "mes", 
+    especialista: str = "todos", 
+    db: Session = Depends(get_db)
+):
+    prof = db.query(models.Profesional).filter(models.Profesional.id == profesional_id).first()
+    if not prof:
+        raise HTTPException(status_code=404, detail="Salón no encontrado.")
     
     plan = (prof.plan or "gratuito").lower()
     if plan == "gratuito":
-        raise HTTPException(status_code=403, detail="⚠️ El Plan Gratuito no incluye la exportación de reportes contables.")
-    
+        raise HTTPException(status_code=403, detail="⚠️ El módulo de estadísticas avanzadas y gráficos analíticos es exclusivo de los planes Profesional y Elite.")
+
     if plan == "profesional" and especialista != "todos":
-        raise HTTPException(status_code=403, detail="⚠️ En el Plan Profesional solo puedes descargar el reporte global. Actualiza a Elite ($29) para reportes por especialista.")
+        raise HTTPException(status_code=403, detail="⚠️ En el Plan Profesional solo puedes ver métricas globales. Actualiza a Elite ($29) para filtrar estadísticas por especialista.")
 
     citas = db.query(models.Cita).filter(models.Cita.profesional_id == profesional_id).all()
     
@@ -733,62 +896,355 @@ def exportar_reporte_contable(
         if periodo == "mes" and (f_cita.month != hoy.month or f_cita.year != hoy.year): continue
         citas_filtradas.append(c)
 
-    gastos = []
+    total_citas = len(citas_filtradas)
+    citas_completadas = sum(1 for c in citas_filtradas if c.estado == "completada")
+    citas_pendientes = sum(1 for c in citas_filtradas if c.estado in ["pendiente", "confirmada"])
+    citas_canceladas = sum(1 for c in citas_filtradas if c.estado == "cancelada")
+
+    ingresos_totales_citas = sum(float(c.monto_pagado or 0.0) for c in citas_filtradas if c.estado != "cancelada")
+    
+    ingresos_totales_ventas = 0.0
+    if especialista == "todos":
+        if hasattr(models, 'VentaDirectaRegistro'):
+            v_reg = db.query(models.VentaDirectaRegistro).filter(models.VentaDirectaRegistro.profesional_id == profesional_id).all()
+            for vr in v_reg:
+                if not vr.fecha_venta: continue
+                f_v = vr.fecha_venta
+                if periodo == "dia" and f_v.date() != hoy.date(): continue
+                if periodo == "semana" and (hoy - f_v).days > 7: continue
+                if periodo == "mes" and (f_v.month != hoy.month or f_v.year != hoy.year): continue
+                ingresos_totales_ventas += float(vr.total_usd or 0.0)
+        elif hasattr(models, 'VentaProducto'):
+            v_prod = db.query(models.VentaProducto).filter(models.VentaProducto.profesional_id == profesional_id).all()
+            for vp in v_prod:
+                if not vp.fecha_venta: continue
+                f_v = vp.fecha_venta
+                if periodo == "dia" and f_v.date() != hoy.date(): continue
+                if periodo == "semana" and (hoy - f_v).days > 7: continue
+                if periodo == "mes" and (f_v.month != hoy.month or f_v.year != hoy.year): continue
+                ingresos_totales_ventas += float(vp.total_usd or 0.0)
+
+    ingresos_totales_usd = ingresos_totales_citas + ingresos_totales_ventas
+    
+    gastos_totales_usd = 0.0
     if hasattr(models, 'GastoLogistica'):
         gastos = db.query(models.GastoLogistica).filter(models.GastoLogistica.profesional_id == profesional_id).all()
+        gastos_totales_usd = sum(float(g.monto_usd or 0.0) for g in gastos)
 
-    total_bruto = sum([c.monto_pagado for c in citas_filtradas if c.estado != "cancelada"])
-    total_gastos = sum([g.monto_usd for g in gastos])
-    neto_final = total_bruto - total_gastos
+    ingresos_por_fecha = {}
+    ingresos_por_servicio = {}
+    ingresos_por_especialista = {}
 
-    if formato == "csv":
-        output = io.StringIO()
-        writer = csv.writer(output)
-        writer.writerow(["ID Cita", "Clienta", "WhatsApp", "Servicio", "Especialista ID", "Fecha", "Estado", "Referencia", "Monto Bruto ($)"])
-        for c in citas_filtradas:
-            writer.writerow([c.id, c.nombre_clienta, c.whatsapp_clienta, c.servicio_id, c.personal_id or "General", c.fecha_hora_inicio, c.estado, c.referencia_pago_movil, c.monto_pagado])
+    for c in citas_filtradas:
+        if c.estado == "cancelada" or not c.fecha_hora_inicio:
+            continue
         
-        writer.writerow([])
-        writer.writerow(["--- RESUMEN CONTABLE FINAL ---"])
-        writer.writerow(["Total Bruto Recaudado ($):", total_bruto])
-        writer.writerow(["Total Gastos de Logística ($):", total_gastos])
-        writer.writerow(["Balance Neto Real ($):", neto_final])
+        f_str = c.fecha_hora_inicio.strftime("%Y-%m-%d")
+        monto = float(c.monto_pagado or 0.0)
         
-        output.seek(0)
-        return StreamingResponse(
-            iter([output.getvalue()]),
-            media_type="text/csv",
-            headers={"Content-Disposition": f"attachment; filename=corte_contable_{especialista}_{periodo}.csv"}
-        )
-    else:
-        html_content = f"""
-        <html>
-        <head><title>Reporte Contable - {prof.nombre_negocio}</title>
-        <style>body{{font-family:sans-serif;padding:20px;color:#1e293b;}} table{{width:100%;border-collapse:collapse;margin-top:15px;}} th,td{{border:1px solid #cbd5e1;padding:8px;text-align:left;font-size:12px;}} th{{background:#f1f5f9;}}</style>
-        </head>
-        <body>
-            <h2>Reporte Contable: {prof.nombre_negocio}</h2>
-            <p>Filtro Especialista ID: <strong>{especialista}</strong> | Período: <strong>{periodo}</strong></p>
-            <table>
-                <thead><tr><th>ID</th><th>Clienta</th><th>Espec. ID</th><th>Fecha</th><th>Estado</th><th>Monto ($)</th></tr></thead>
-                <tbody>
-        """
-        for c in citas_filtradas:
-            html_content += f"<tr><td>{c.id}</td><td>{c.nombre_clienta}</td><td>{c.personal_id}</td><td>{c.fecha_hora_inicio}</td><td>{c.estado}</td><td>${c.monto_pagado:.2f}</td></tr>"
+        ingresos_por_fecha[f_str] = ingresos_por_fecha.get(f_str, 0.0) + monto
+
+        serv = db.query(models.Servicio).filter(models.Servicio.id == c.servicio_id).first()
+        n_serv = serv.nombre if serv else "Desconocido"
+        ingresos_por_servicio[n_serv] = ingresos_por_servicio.get(n_serv, 0.0) + monto
+
+        pers = db.query(models.Personal).filter(models.Personal.id == c.personal_id).first() if c.personal_id else None
+        n_pers = pers.nombre if pers else "General / Sin Asignar"
+        ingresos_por_especialista[n_pers] = ingresos_por_especialista.get(n_pers, 0.0) + monto
+
+    fechas_ordenadas = sorted(ingresos_por_fecha.keys())
+    grafico_ingresos_fechas = {
+        "fechas": fechas_ordenadas,
+        "totales": [round(ingresos_por_fecha[f], 2) for f in fechas_ordenadas]
+    }
+
+    grafico_servicios = [
+        {"nombre": k, "total": round(v, 2)} for k, v in sorted(ingresos_por_servicio.items(), key=lambda item: item[1], reverse=True)
+    ]
+
+    grafico_especialistas = [
+        {"nombre": k, "total": round(v, 2)} for k, v in sorted(ingresos_por_especialista.items(), key=lambda item: item[1], reverse=True)
+    ]
+
+    return {
+        "totales": {
+            "total_citas": total_citas,
+            "citas_completadas": citas_completadas,
+            "citas_pendientes": citas_pendientes,
+            "citas_canceladas": citas_canceladas,
+            "ingresos_totales_usd": round(ingresos_totales_usd, 2),
+            "gastos_totales_usd": round(gastos_totales_usd, 2),
+            "balance_neto_usd": round(ingresos_totales_usd - gastos_totales_usd, 2)
+        },
+        "ingresos_por_fecha": grafico_ingresos_fechas,
+        "distribucion_servicios": grafico_servicios,
+        "distribucion_especialistas": grafico_especialistas
+    }
+
+
+# ==========================================
+# ENDPOINT: EXPORTAR REPORTE CONTABLE
+# ==========================================
+@app.get("/api/profesional/{profesional_id}/exportar-reporte-contable")
+def exportar_reporte_contable(
+    profesional_id: int, 
+    formato: str = "xlsx", 
+    format: str = None,
+    especialista: str = "todos", 
+    periodo: str = "mes", 
+    db: Session = Depends(get_db)
+):
+    prof = db.query(models.Profesional).filter(models.Profesional.id == profesional_id).first()
+    if not prof:
+        raise HTTPException(status_code=404, detail="Salón no encontrado")
+    
+    plan = (prof.plan or "gratuito").lower()
+    if plan == "gratuito":
+        raise HTTPException(status_code=403, detail="⚠️ El Plan Gratuito no incluye la exportación de reportes contables.")
+    
+    if plan == "profesional" and especialista != "todos":
+        raise HTTPException(status_code=403, detail="⚠️ En el Plan Profesional solo puedes descargar el reporte global. Actualiza a Elite ($29) para reportes por especialista.")
+
+    citas_query = db.query(models.Cita).filter(models.Cita.profesional_id == profesional_id)
+    if especialista != "todos":
+        citas_query = citas_query.filter(models.Cita.personal_id == int(especialista))
         
-        html_content += f"""
-                </tbody>
-            </table>
-            <div style="margin-top:20px;padding:15px;background:#f8fafc;border-radius:8px;">
-                <h3>Resumen Financiero Redondo</h3>
-                <p><strong>Total Bruto Recaudado:</strong> ${total_bruto:.2f}</p>
-                <p><strong>Total Gastos / Insumos:</strong> ${total_gastos:.2f}</p>
-                <p><strong>Balance Neto Real:</strong> ${neto_final:.2f}</p>
-            </div>
-        </body>
-        </html>
-        """
-        return HTMLResponse(content=html_content)
+    citas = citas_query.all()
+
+    hoy = datetime.datetime.now()
+    citas_filtradas = []
+    for c in citas:
+        if not c.fecha_hora_inicio: continue
+        f_cita = c.fecha_hora_inicio
+        if periodo == "dia" and f_cita.date() != hoy.date(): continue
+        if periodo == "semana" and (hoy - f_cita).days > 7: continue
+        if periodo == "mes" and (f_cita.month != hoy.month or f_cita.year != hoy.year): continue
+        citas_filtradas.append(c)
+
+    ventas_directas_filtradas = []
+    if especialista == "todos":
+        if hasattr(models, 'VentaDirectaRegistro'):
+            v_reg = db.query(models.VentaDirectaRegistro).filter(models.VentaDirectaRegistro.profesional_id == profesional_id).all()
+            for vr in v_reg:
+                if not vr.fecha_venta: continue
+                f_v = vr.fecha_venta
+                if periodo == "dia" and f_v.date() != hoy.date(): continue
+                if periodo == "semana" and (hoy - f_v).days > 7: continue
+                if periodo == "mes" and (f_v.month != hoy.month or f_v.year != hoy.year): continue
+                ventas_directas_filtradas.append(vr)
+        elif hasattr(models, 'VentaProducto'):
+            v_prod = db.query(models.VentaProducto).filter(models.VentaProducto.profesional_id == profesional_id).all()
+            for vp in v_prod:
+                if not vp.fecha_venta: continue
+                f_v = vp.fecha_venta
+                if periodo == "dia" and f_v.date() != hoy.date(): continue
+                if periodo == "semana" and (hoy - f_v).days > 7: continue
+                if periodo == "mes" and (f_v.month != hoy.month or f_v.year != hoy.year): continue
+                ventas_directas_filtradas.append(vp)
+
+    gastos = []
+    if especialista == "todos" and hasattr(models, 'GastoLogistica'):
+        gastos = db.query(models.GastoLogistica).filter(models.GastoLogistica.profesional_id == profesional_id).all()
+
+    multas = []
+    if hasattr(models, 'MultaEspecialista'):
+        m_query = db.query(models.MultaEspecialista).filter(models.MultaEspecialista.profesional_id == profesional_id)
+        if especialista != "todos":
+            m_query = m_query.filter(models.MultaEspecialista.personal_id == int(especialista))
+        multas = m_query.all()
+
+    tasa_actual = leer_tasa_local(db)
+    pais_socio = str(prof.pais or "VE").strip().upper()
+    es_venezuela = pais_socio in ["VE", "VENEZUELA", "BOLIVARIANA DE VENEZUELA"]
+    simbolo = prof.simbolo_moneda or "$"
+
+    total_bruto_citas = sum([float(c.monto_pagado or 0.0) for c in citas_filtradas if c.estado != "cancelada"])
+    
+    total_bruto_ventas = 0.0
+    for vd in ventas_directas_filtradas:
+        val_t = getattr(vd, 'total_usd', None) or (getattr(vd, 'cantidad', 1.0) * getattr(vd, 'precio_unitario', 0.0))
+        total_bruto_ventas += float(val_t or 0.0)
+
+    total_bruto_usd = total_bruto_citas + total_bruto_ventas
+    total_neto_usd = total_bruto_usd / 1.16
+    total_iva_usd = total_bruto_usd - total_neto_usd
+    total_gastos_usd = sum([float(g.monto_usd or 0.0) for g in gastos])
+    total_multas_cobradas_usd = sum([float(m.monto_original or 0.0) for m in multas if m.estado_pago == "pagada"])
+    
+    neto_final_usd = total_bruto_usd - total_gastos_usd + total_multas_cobradas_usd
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Reporte Contable"
+    ws.views.sheetView[0].showGridLines = True
+
+    COLOR_HEADER_BG = "374151"
+    COLOR_HEADER_FG = "FFFFFF"
+    COLOR_ZEBRA = "F9FAFB"
+    COLOR_BORDE = "D1D5DB"
+
+    fuente_titulo = Font(name="Calibri", size=14, bold=True, color="111827")
+    fuente_sub = Font(name="Calibri", size=10, italic=True, color="6B7280")
+    fuente_header = Font(name="Calibri", size=11, bold=True, color=COLOR_HEADER_FG)
+    fuente_datos = Font(name="Calibri", size=11, color="374151")
+    fuente_resumen = Font(name="Calibri", size=11, bold=True, color="111827")
+
+    fill_header = PatternFill(start_color=COLOR_HEADER_BG, end_color=COLOR_HEADER_BG, fill_type="solid")
+    fill_zebra = PatternFill(start_color=COLOR_ZEBRA, end_color=COLOR_ZEBRA, fill_type="solid")
+    
+    borde_celda = Border(
+        left=Side(style='thin', color=COLOR_BORDE),
+        right=Side(style='thin', color=COLOR_BORDE),
+        top=Side(style='thin', color=COLOR_BORDE),
+        bottom=Side(style='thin', color=COLOR_BORDE)
+    )
+
+    ws.append([f"Reporte Financiero y Contable - {prof.nombre_negocio}"])
+    ws.cell(row=1, column=1).font = fuente_titulo
+    
+    nombre_esp_txt = "Todos los Especialistas"
+    if especialista != "todos":
+        esp_obj = db.query(models.Personal).filter(models.Personal.id == int(especialista)).first()
+        if esp_obj: nombre_esp_txt = f"Especialista: {esp_obj.nombre}"
+
+    sub_txt = f"Filtro: {nombre_esp_txt} | Generado: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')} | Período: {periodo.capitalize()} | Moneda: {simbolo}"
+    ws.append([sub_txt])
+    ws.cell(row=2, column=1).font = fuente_sub
+    ws.append([])
+
+    headers = ['ID Cita', 'Clienta', 'Servicio', 'Especialista', 'Fecha', 'Estado', 'Ref Pago', f'Bruto ({simbolo})', f'Neto sin Imp ({simbolo})', f'IVA ({simbolo})']
+    if es_venezuela:
+        headers.extend(['Tasa BCV', 'Bruto Bs', 'Neto Bs', 'Total Bs c/IVA'])
+    ws.append(headers)
+
+    for col_idx in range(1, len(headers) + 1):
+        cell = ws.cell(row=4, column=col_idx)
+        cell.font = fuente_header
+        cell.fill = fill_header
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.border = borde_celda
+
+    datos_tabla = []
+    for c in citas_filtradas:
+        serv = db.query(models.Servicio).filter(models.Servicio.id == c.servicio_id).first()
+        pers = db.query(models.Personal).filter(models.Personal.id == c.personal_id).first() if c.personal_id else None
+        
+        nombre_servicio = serv.nombre if serv else "Desconocido"
+        nombre_personal = pers.nombre if pers else "General"
+        
+        if c.estado == "cancelada":
+            bruto = 0.0
+            neto_s_imp = 0.0
+            iva = 0.0
+        else:
+            bruto = float(c.monto_pagado or 0.0)
+            neto_s_imp = bruto / 1.16
+            iva = bruto - neto_s_imp
+        
+        fecha_str_xlsx = ""
+        if c.fecha_hora_inicio:
+            fecha_str_xlsx = c.fecha_hora_inicio.strftime("%m/%d/%Y %H:%M") if pais_socio == "US" else c.fecha_hora_inicio.strftime("%d/%m/%Y %I:%M %p")
+
+        item_dict = {
+            "ID Cita": c.id,
+            "Clienta": c.nombre_clienta,
+            "Servicio": nombre_servicio,
+            "Especialista": nombre_personal,
+            "Fecha": fecha_str_xlsx,
+            "Estado": c.estado,
+            "Ref Pago": str(c.referencia_pago_movil or ""),
+            "Bruto": round(bruto, 2),
+            "Neto sin Imp": round(neto_s_imp, 2),
+            "IVA": round(iva, 2)
+        }
+        
+        if es_venezuela:
+            tasa_cita = float(getattr(c, 'tasa_bcv_historica', None) or tasa_actual)
+            item_dict["Tasa BCV"] = round(tasa_cita, 2)
+            item_dict["Bruto Bs"] = round(bruto * tasa_cita, 2)
+            item_dict["Neto Bs"] = round(neto_s_imp * tasa_cita, 2)
+            item_dict["Total Bs c/IVA"] = round(bruto * tasa_cita, 2)
+        
+        datos_tabla.append(item_dict)
+
+    start_row = 5
+    for idx, item in enumerate(datos_tabla):
+        r = start_row + idx
+        row_vals = [
+            item["ID Cita"], item["Clienta"], item["Servicio"], item["Especialista"],
+            item["Fecha"], item["Estado"], item["Ref Pago"],
+            float(item["Bruto"]), float(item["Neto sin Imp"]), float(item["IVA"])
+        ]
+        if es_venezuela:
+            row_vals.extend([
+                float(item["Tasa BCV"]), float(item["Bruto Bs"]), float(item["Neto Bs"]), float(item["Total Bs c/IVA"])
+            ])
+        ws.append(row_vals)
+
+        is_zebra = (r % 2 == 0)
+        for c_idx in range(1, len(headers) + 1):
+            cell = ws.cell(row=r, column=c_idx)
+            cell.font = fuente_datos
+            cell.border = borde_celda
+            if is_zebra: cell.fill = fill_zebra
+
+            if c_idx in [8, 9, 10]:
+                cell.number_format = f'"{simbolo}"#,##0.00'
+                cell.alignment = Alignment(horizontal="right")
+            elif es_venezuela and c_idx == 11:
+                cell.number_format = '#,##0.00'
+                cell.alignment = Alignment(horizontal="right")
+            elif es_venezuela and c_idx in [12, 13, 14]:
+                cell.number_format = '"Bs."#,##0.00'
+                cell.alignment = Alignment(horizontal="right")
+            elif c_idx in [1, 6, 7]:
+                cell.alignment = Alignment(horizontal="center")
+
+    end_data_row = start_row + len(datos_tabla)
+    resumen_start = end_data_row + 2
+
+    ws.cell(row=resumen_start, column=1, value="RESUMEN FINANCIERO").font = fuente_resumen
+    ws.cell(row=resumen_start+1, column=1, value=f"Total Bruto Citas ({simbolo})").font = fuente_datos
+    ws.cell(row=resumen_start+1, column=2, value=total_bruto_citas).number_format = f'"{simbolo}"#,##0.00'
+    
+    ws.cell(row=resumen_start+2, column=1, value=f"Total Ventas Directas Productos ({simbolo})").font = fuente_datos
+    ws.cell(row=resumen_start+2, column=2, value=total_bruto_ventas).number_format = f'"{simbolo}"#,##0.00'
+
+    ws.cell(row=resumen_start+3, column=1, value=f"Total Bruto Recaudado ({simbolo})").font = fuente_resumen
+    ws.cell(row=resumen_start+3, column=2, value=total_bruto_usd).number_format = f'"{simbolo}"#,##0.00'
+    
+    ws.cell(row=resumen_start+4, column=1, value=f"Total Neto sin Impuesto ({simbolo})").font = fuente_datos
+    ws.cell(row=resumen_start+4, column=2, value=total_neto_usd).number_format = f'"{simbolo}"#,##0.00'
+
+    ws.cell(row=resumen_start+5, column=1, value=f"Total IVA ({simbolo})").font = fuente_datos
+    ws.cell(row=resumen_start+5, column=2, value=total_iva_usd).number_format = f'"{simbolo}"#,##0.00'
+
+    if especialista == "todos":
+        ws.cell(row=resumen_start+6, column=1, value=f"Total Gastos / Insumos ({simbolo})").font = fuente_datos
+        ws.cell(row=resumen_start+6, column=2, value=total_gastos_usd).number_format = f'"{simbolo}"#,##0.00'
+
+    ws.cell(row=resumen_start+7, column=1, value=f"Ingresos por Multas Cobradas ({simbolo})").font = fuente_datos
+    ws.cell(row=resumen_start+7, column=2, value=total_multas_cobradas_usd).number_format = f'"{simbolo}"#,##0.00'
+
+    ws.cell(row=resumen_start+8, column=1, value=f"Balance Neto Real ({simbolo})").font = fuente_resumen
+    ws.cell(row=resumen_start+8, column=2, value=neto_final_usd).number_format = f'"{simbolo}"#,##0.00'
+
+    for col in ws.columns:
+        max_len = max([len(str(cell.value or '')) for cell in col])
+        col_letter = get_column_letter(col[0].column)
+        ws.column_dimensions[col_letter].width = max(max_len + 5, 20)
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    
+    filename_xlsx = f"Reporte_Contable_{int(time.time())}.xlsx"
+    
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename_xlsx}"}
+    )
 
 
 # ==========================================
@@ -816,8 +1272,8 @@ def pagina_principal(request: Request):
     return templates.TemplateResponse(request, "landing.html", {})
 
 @app.get("/api/tasa-bcv")
-def obtener_tasa_bcv():
-    return {"tasa": leer_tasa_local(), "fecha": str(datetime.date.today())}
+def obtener_tasa_bcv(db: Session = Depends(get_db)):
+    return {"tasa": leer_tasa_local(db), "fecha": str(datetime.date.today())}
 
 @app.get("/api/vitrina-elite")
 def obtener_vitrina_elite(db: Session = Depends(get_db)):
@@ -1038,7 +1494,27 @@ def verificar_y_cambiar_password(request: Request, data: VerificarRecuperacionSc
 def obtener_notas_clinicas(profesional_id: int, db: Session = Depends(get_db)):
     if hasattr(models, 'NotaClinicaPaciente'):
         notas = db.query(models.NotaClinicaPaciente).filter(models.NotaClinicaPaciente.profesional_id == profesional_id).all()
-        return [{"id": n.id, "whatsapp_clienta": n.whatsapp_clienta, "nombre_clienta": n.nombre_clienta, "diagnostico_notas": n.diagnostico_notas, "fecha_actualizacion": n.fecha_actualizacion.strftime("%Y-%m-%d %I:%M %p") if hasattr(n, 'fecha_actualizacion') and n.fecha_actualizacion else ""} for n in notas]
+        
+        prof_obj = db.query(models.Profesional).filter(models.Profesional.id == profesional_id).first()
+        pais_s = str(prof_obj.pais or "VE").strip().upper() if prof_obj else "VE"
+
+        resultado_notas = []
+        for n in notas:
+            f_act_str = ""
+            if hasattr(n, 'fecha_actualizacion') and n.fecha_actualizacion:
+                if pais_s == "US":
+                    f_act_str = n.fecha_actualizacion.strftime("%m/%d/%Y %H:%M")
+                else:
+                    f_act_str = n.fecha_actualizacion.strftime("%d/%m/%Y %I:%M %p")
+            
+            resultado_notas.append({
+                "id": n.id, 
+                "whatsapp_clienta": n.whatsapp_clienta, 
+                "nombre_clienta": n.nombre_clienta, 
+                "diagnostico_notas": n.diagnostico_notas, 
+                "fecha_actualizacion": f_act_str
+            })
+        return resultado_notas
     return []
 
 @app.post("/api/notas-clinicas/")
@@ -1107,6 +1583,12 @@ def obtener_profesional_by_id(profesional_id: int, db: Session = Depends(get_db)
         raise HTTPException(status_code=404, detail="No encontrado")
     verificar_vencimiento_socio(prof, db)
     db.commit()
+    
+    pais_s = str(prof.pais or "VE").strip().upper()
+    venc_str = "Sin límite"
+    if prof.fecha_vencimiento:
+        venc_str = prof.fecha_vencimiento.strftime("%m/%d/%Y") if pais_s == "US" else prof.fecha_vencimiento.strftime("%d/%m/%Y")
+
     return {
         "id": prof.id, "nombre_negocio": prof.nombre_negocio, "slug": prof.slug,
         "telefono_whatsapp": prof.telefono_whatsapp, "direccion": prof.direccion,
@@ -1123,7 +1605,7 @@ def obtener_profesional_by_id(profesional_id: int, db: Session = Depends(get_db)
         "paypal_correo": getattr(prof, 'paypal_correo', ''),
         "mostrar_pagos_internacionales": getattr(prof, 'mostrar_pagos_internacionales', True),
         "latitud": prof.latitud, "longitud": prof.longitud, "plan": prof.plan,
-        "estado_cuenta": prof.estado_cuenta, "fecha_vencimiento": prof.fecha_vencimiento.strftime("%Y-%m-%d") if prof.fecha_vencimiento else "Sin límite",
+        "estado_cuenta": prof.estado_cuenta, "fecha_vencimiento": venc_str,
         "monto_multa_pendiente": getattr(prof, "monto_multa_pendiente", 0.0),
         "motivo_multa": getattr(prof, "motivo_multa", None)
     }
@@ -1146,6 +1628,11 @@ def obtener_profesional_por_slug(slug: str, db: Session = Depends(get_db)):
         personal = sorted(personal, key=lambda p: p.id)[:1]
     elif plan == "profesional" and len(personal) > 3:
         personal = sorted(personal, key=lambda p: p.id)[:3]
+
+    pais_s = str(prof.pais or "VE").strip().upper()
+    venc_str = "Sin límite"
+    if prof.fecha_vencimiento:
+        venc_str = prof.fecha_vencimiento.strftime("%m/%d/%Y") if pais_s == "US" else prof.fecha_vencimiento.strftime("%d/%m/%Y")
 
     return {
         "id": prof.id, 
@@ -1173,7 +1660,7 @@ def obtener_profesional_por_slug(slug: str, db: Session = Depends(get_db)):
         "longitud": prof.longitud, 
         "plan": prof.plan,
         "estado_cuenta": prof.estado_cuenta, 
-        "fecha_vencimiento": prof.fecha_vencimiento.strftime("%Y-%m-%d") if prof.fecha_vencimiento else "Sin límite",
+        "fecha_vencimiento": venc_str,
         "categorias": [{"id": c.id, "nombre": c.nombre, "icono": c.icono} for c in categorias],
         "personal": [{"id": p.id, "nombre": p.nombre, "especialidad": p.especialidad} for p in personal]
     }
@@ -1242,7 +1729,26 @@ def eliminar_servicio(servicio_id: int, db: Session = Depends(get_db)):
 @app.get("/api/profesional/{profesional_id}/historial-pagos")
 def obtener_historial_pagos(profesional_id: int, db: Session = Depends(get_db)):
     pagos = db.query(models.PagoSuscripcion).filter(models.PagoSuscripcion.profesional_id == profesional_id).order_by(models.PagoSuscripcion.fecha_pago.desc()).all()
-    return [{"id": p.id, "monto_usd": p.monto_usd, "monto_bs": p.monto_bs, "referencia": p.referencia_pago, "nuevo_plan": p.nuevo_plan, "fecha": p.fecha_pago.strftime("%Y-%m-%d %I:%M %p"), "estado": p.estado_pago} for p in pagos]
+    
+    prof_obj = db.query(models.Profesional).filter(models.Profesional.id == profesional_id).first()
+    pais_s = str(prof_obj.pais or "VE").strip().upper() if prof_obj else "VE"
+
+    resultado_pagos = []
+    for p in pagos:
+        f_pago_str = ""
+        if p.fecha_pago:
+            f_pago_str = p.fecha_pago.strftime("%m/%d/%Y %H:%M") if pais_s == "US" else p.fecha_pago.strftime("%d/%m/%Y %I:%M %p")
+
+        resultado_pagos.append({
+            "id": p.id, 
+            "monto_usd": p.monto_usd, 
+            "monto_bs": p.monto_bs, 
+            "referencia": p.referencia_pago, 
+            "nuevo_plan": p.nuevo_plan, 
+            "fecha": f_pago_str, 
+            "estado": p.estado_pago
+        })
+    return resultado_pagos
 
 @app.post("/api/suscripciones/reportar")
 def reportar_pago_suscripcion(data: schemas.PagoSuscripcionReport, db: Session = Depends(get_db)):
@@ -1257,7 +1763,7 @@ def reportar_pago_suscripcion(data: schemas.PagoSuscripcionReport, db: Session =
     if duplicado_pago:
         raise HTTPException(status_code=400, detail="⚠️ Esta referencia de pago ya fue reportada o utilizada anteriormente.")
 
-    tasa = leer_tasa_local()
+    tasa = leer_tasa_local(db)
     monto_usd = float(data.monto_usd)
     db.add(models.PagoSuscripcion(
         profesional_id=data.profesional_id, 
@@ -1328,10 +1834,14 @@ def webhook_auto_aprobar_pago(datos: WebhookPagoInput, db: Session = Depends(get
         db.commit()
 
         try:
+            prof_cita = db.query(models.Profesional).filter(models.Profesional.id == cita_pendiente.profesional_id).first()
+            p_s = str(prof_cita.pais or "VE").strip().upper() if prof_cita else "VE"
+            f_cita_fmt = cita_pendiente.fecha_hora_inicio.strftime("%m/%d/%Y %H:%M") if p_s == "US" else cita_pendiente.fecha_hora_inicio.strftime("%Y-%m-%d %I:%M %p")
+
             enviar_mensaje_whatsapp(
                 cita_pendiente.whatsapp_clienta, 
                 "cita_confirmada_admin", 
-                [cita_pendiente.nombre_clienta, cita_pendiente.fecha_hora_inicio.strftime("%Y-%m-%d %I:%M %p")]
+                [cita_pendiente.nombre_clienta, f_cita_fmt]
             )
         except Exception:
             pass
@@ -1420,9 +1930,16 @@ def eliminar_dia_bloqueado_db(profesional_id: int, bloqueo_id: int, db: Session 
 @app.get("/api/profesional/{profesional_id}/multas")
 def obtener_multas_especialistas(profesional_id: int, db: Session = Depends(get_db)):
     multas = db.query(models.MultaEspecialista).filter(models.MultaEspecialista.profesional_id == profesional_id).all()
+    prof_obj = db.query(models.Profesional).filter(models.Profesional.id == profesional_id).first()
+    pais_s = str(prof_obj.pais or "VE").strip().upper() if prof_obj else "VE"
+
     resultado = []
     for m in multas:
         personal = db.query(models.Personal).filter(models.Personal.id == m.personal_id).first()
+        f_reg_str = ""
+        if m.fecha_registro:
+            f_reg_str = m.fecha_registro.strftime("%m/%d/%Y %H:%M") if pais_s == "US" else m.fecha_registro.strftime("%d/%m/%Y %I:%M %p")
+
         resultado.append({
             "id": m.id,
             "personal_id": m.personal_id,
@@ -1431,7 +1948,7 @@ def obtener_multas_especialistas(profesional_id: int, db: Session = Depends(get_
             "moneda": m.moneda,
             "motivo": m.motivo,
             "estado": m.estado_pago,
-            "fecha": m.fecha_registro.strftime("%Y-%m-%d %I:%M %p") if m.fecha_registro else ""
+            "fecha": f_reg_str
         })
     return resultado
 
@@ -1510,6 +2027,10 @@ def eliminar_personal(personal_id: int, db: Session = Depends(get_db)):
         db.commit()
     return {"mensaje": "Eliminado"}
 
+
+# ==========================================
+# VERIFICACIÓN DE DISPONIBILIDAD
+# ==========================================
 @app.post("/api/citas/verificar-disponibilidad")
 def verificar_disponibilidad(data: schemas.CitaCreate, db: Session = Depends(get_db)):
     prof = db.query(models.Profesional).filter(models.Profesional.id == data.profesional_id).first()
@@ -1569,11 +2090,11 @@ def verificar_disponibilidad(data: schemas.CitaCreate, db: Session = Depends(get
     pausa_ini = a_minutos(horario.hora_cierre_manana or "12:00")
     pausa_fin = a_minutos(horario.hora_apertura_tarde or "13:00")
 
-    en_horario_general = (aper_min <= t_inicio_min and t_fin_min <= cierre_max)
-    cae_en_pausa = (t_inicio_min < pausa_fin and t_fin_min > pausa_ini)
+    respeta_jornada_manana = (aper_min <= t_inicio_min and t_fin_min <= pausa_ini)
+    respeta_jornada_tarde = (pausa_fin <= t_inicio_min and t_fin_min <= cierre_max)
 
-    if not en_horario_general or cae_en_pausa:
-        return {"disponible": False, "personal_asignado_id": None, "mensaje": f"⚠️ Fuera de la jornada laboral."}
+    if not respeta_jornada_manana and not respeta_jornada_tarde:
+        return {"disponible": False, "personal_asignado_id": None, "mensaje": f"⚠️ Fuera de la jornada laboral o cruza el horario de almuerzo/cierre."}
 
     personal_bloqueado_ids = [
         b.personal_id for b in db.query(models.DiaBloqueado).filter(
@@ -1622,6 +2143,7 @@ def verificar_disponibilidad(data: schemas.CitaCreate, db: Session = Depends(get
 
     return {"disponible": False, "personal_asignado_id": None, "mensaje": "⚠️ Todos los especialistas están ocupados en este horario."}
 
+
 @app.post("/api/citas/")
 @limiter.limit("15/minute")
 def agendar_cita(request: Request, cita: schemas.CitaCreate, db: Session = Depends(get_db)):
@@ -1629,102 +2151,245 @@ def agendar_cita(request: Request, cita: schemas.CitaCreate, db: Session = Depen
     if not ref_movil or len(ref_movil) < 4:
         raise HTTPException(status_code=400, detail="⚠️ La referencia de pago es obligatoria (mínimo 4 dígitos).")
     
-    duplicado_cita = db.query(models.Cita).filter(
-        models.Cita.referencia_pago_movil == ref_movil,
-        models.Cita.estado.in_(["pendiente", "confirmada"])
-    ).first()
-    if duplicado_cita:
-        raise HTTPException(status_code=400, detail="⚠️ Esta referencia de pago móvil ya fue utilizada en otra cita activa.")
+    try:
+        verif = verificar_disponibilidad(cita, db)
+        if not verif.get("disponible"):
+            raise HTTPException(status_code=400, detail=verif.get("mensaje", "Horario no disponible."))
 
-    verif = verificar_disponibilidad(cita, db)
+        prof = db.query(models.Profesional).filter(models.Profesional.id == cita.profesional_id).first()
+        serv = db.query(models.Servicio).filter(models.Servicio.id == cita.servicio_id).first()
+
+        dt_inicio = datetime.datetime.strptime(cita.fecha_hora_inicio_str, "%Y-%m-%d %H:%M")
+        dt_fin = dt_inicio + datetime.timedelta(minutes=serv.duracion_minutos)
+        personal_id_final = verif.get("personal_asignado_id") or cita.personal_id
+
+        tasa = cita.tasa_bcv_actual if str(prof.pais or "VE").strip().upper() in ["VE", "VENEZUELA"] and cita.tasa_bcv_actual > 0 else leer_tasa_local(db)
+
+        monto_total_real = float(serv.precio_usd if serv else (cita.monto_pagado or 0.0))
+        monto_abonado_ingresado = float(cita.monto_pagado if cita.monto_pagado is not None else monto_total_real)
+
+        if monto_abonado_ingresado < monto_total_real:
+            saldo_pendiente = monto_total_real - monto_abonado_ingresado
+            estado_financiero = "parcial"
+            modalidad_limpia = f"Abono ${monto_abonado_ingresado:.2f}"
+        else:
+            saldo_pendiente = 0.0
+            estado_financiero = "pagado"
+            modalidad_limpia = "Pago Completo 100%"
+
+        nueva = models.Cita(
+            profesional_id=cita.profesional_id, 
+            servicio_id=cita.servicio_id, 
+            personal_id=personal_id_final,
+            nombre_clienta=sanitizar_texto(cita.nombre_clienta), 
+            whatsapp_clienta=sanitizar_texto(cita.whatsapp_clienta),
+            fecha_hora_inicio=dt_inicio, 
+            fecha_hora_fin=dt_fin, 
+            referencia_pago_movil=ref_movil,
+            monto_total_usd=monto_total_real,
+            monto_abonado_usd=monto_abonado_ingresado,
+            saldo_pendiente_usd=saldo_pendiente,
+            modalidad_pago=modalidad_limpia,
+            estado_financiero_pago=estado_financiero,
+            monto_pagado=monto_abonado_ingresado, 
+            tasa_bcv_historica=tasa, 
+            monto_bs=monto_abonado_ingresado * tasa, 
+            estado="pendiente"
+        )
+        db.add(nueva)
+        db.commit()
+        db.refresh(nueva)
+
+        pais_s = str(prof.pais or "VE").strip().upper()
+        f_inicio_fmt = dt_inicio.strftime("%m/%d/%Y %H:%M") if pais_s == "US" else dt_inicio.strftime("%Y-%m-%d %I:%M %p")
+
+        enviar_mensaje_whatsapp(nueva.whatsapp_clienta, "cita_programada_detalles", [nueva.nombre_clienta, f_inicio_fmt, serv.nombre])
+        return {
+            "mensaje": "Agendado con éxito.", 
+            "cita_id": nueva.id, 
+            "monto_total": monto_total_real,
+            "monto_abonado": monto_abonado_ingresado, 
+            "saldo_pendiente": saldo_pendiente,
+            "estado_financiero": estado_financiero
+        }
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="⚠️ Esta referencia de pago móvil ya fue registrada por otra clienta simultáneamente (condición de carrera prevenida).")
+
+
+# ==========================================
+# ENDPOINT: AGENDAR CITA MANUAL SOCIO
+# ==========================================
+@app.post("/api/profesional/agendar-cita-socio")
+def agendar_cita_socio_manual(data: CitaSocioManualSchema, db: Session = Depends(get_db)):
+    prof = db.query(models.Profesional).filter(models.Profesional.id == data.profesional_id).first()
+    if not prof or prof.estado_cuenta == "baneado" or prof.plan == "suspendido_multa":
+        raise HTTPException(status_code=403, detail="⚠️ Salón suspendido o no encontrado.")
+    
+    serv = db.query(models.Servicio).filter(models.Servicio.id == data.servicio_id).first()
+    if not serv:
+        raise HTTPException(status_code=404, detail="⚠️ Servicio no encontrado.")
+
+    try:
+        dt_inicio = datetime.datetime.strptime(data.fecha_hora_inicio_str, "%Y-%m-%d %H:%M")
+    except Exception:
+        raise HTTPException(status_code=400, detail="⚠️ Formato de fecha y hora inválido (Use YYYY-MM-DD HH:MM).")
+
+    verif_payload = schemas.CitaCreate(
+        profesional_id=data.profesional_id,
+        servicio_id=data.servicio_id,
+        personal_id=data.personal_id if data.personal_id > 0 else None,
+        nombre_clienta=data.nombre_clienta,
+        whatsapp_clienta=data.whatsapp_clienta,
+        fecha_hora_inicio_str=data.fecha_hora_inicio_str,
+        referencia_pago_movil=data.referencia_pago_movil,
+        monto_pagado=data.monto_pagado
+    )
+
+    verif = verificar_disponibilidad(verif_payload, db)
     if not verif.get("disponible"):
-        raise HTTPException(status_code=400, detail=verif.get("mensaje", "Horario no disponible."))
+        raise HTTPException(
+            status_code=400, 
+            detail=verif.get("mensaje", "⚠️ El horario seleccionado no está disponible.")
+        )
 
-    prof = db.query(models.Profesional).filter(models.Profesional.id == cita.profesional_id).first()
-    serv = db.query(models.Servicio).filter(models.Servicio.id == cita.servicio_id).first()
-
-    dt_inicio = datetime.datetime.strptime(cita.fecha_hora_inicio_str, "%Y-%m-%d %H:%M")
+    personal_id_final = verif.get("personal_asignado_id") or data.personal_id
     dt_fin = dt_inicio + datetime.timedelta(minutes=serv.duracion_minutos)
-    personal_id_final = verif.get("personal_asignado_id") or cita.personal_id
+    tasa = leer_tasa_local(db)
+    monto_pago = float(data.monto_pagado) if data.monto_pagado > 0 else serv.precio_usd
+    monto_total_real = serv.precio_usd
 
-    tasa = cita.tasa_bcv_actual if (prof.pais or "VE") == "VE" and cita.tasa_bcv_actual > 0 else leer_tasa_local()
-
-    monto_total_real = serv.precio_usd if serv else float(cita.monto_pagado or 0.0)
-    modalidad = getattr(cita, "modalidad_pago", "completo") or "completo"
-
-    if modalidad == "mitad":
-        monto_abonado = monto_total_real / 2.0
-        saldo_pendiente = monto_total_real / 2.0
+    if monto_pago < monto_total_real:
+        saldo_pendiente = monto_total_real - monto_pago
         estado_financiero = "parcial"
+        modalidad = f"Abono ${monto_pago:.2f}"
     else:
-        modalidad = "completo"
-        monto_abonado = monto_total_real
         saldo_pendiente = 0.0
         estado_financiero = "pagado"
+        modalidad = "Pago Completo 100%"
 
-    nueva = models.Cita(
-        profesional_id=cita.profesional_id, 
-        servicio_id=cita.servicio_id, 
-        personal_id=personal_id_final,
-        nombre_clienta=sanitizar_texto(cita.nombre_clienta), 
-        whatsapp_clienta=sanitizar_texto(cita.whatsapp_clienta),
-        fecha_hora_inicio=dt_inicio, 
-        fecha_hora_fin=dt_fin, 
-        referencia_pago_movil=ref_movil,
-        monto_total_usd=monto_total_real,
-        monto_abonado_usd=monto_abonado,
-        saldo_pendiente_usd=saldo_pendiente,
-        modalidad_pago=modalidad,
-        estado_financiero_pago=estado_financiero,
-        monto_pagado=monto_abonado, 
-        tasa_bcv_historica=tasa, 
-        monto_bs=monto_abonado * tasa, 
-        estado="pendiente"
-    )
-    db.add(nueva)
-    db.commit()
-    db.refresh(nueva)
+    try:
+        nueva = models.Cita(
+            profesional_id=data.profesional_id,
+            servicio_id=data.servicio_id,
+            personal_id=personal_id_final,
+            nombre_clienta=sanitizar_texto(data.nombre_clienta),
+            whatsapp_clienta=sanitizar_texto(data.whatsapp_clienta),
+            fecha_hora_inicio=dt_inicio,
+            fecha_hora_fin=dt_fin,
+            referencia_pago_movil=sanitizar_texto(data.referencia_pago_movil or "ManualSocio"),
+            monto_total_usd=monto_total_real,
+            monto_abonado_usd=monto_pago,
+            saldo_pendiente_usd=saldo_pendiente,
+            modalidad_pago=modalidad,
+            estado_financiero_pago=estado_financiero,
+            monto_pagado=monto_pago,
+            tasa_bcv_historica=tasa,
+            monto_bs=monto_pago * tasa,
+            estado="confirmada"
+        )
+        db.add(nueva)
+        db.commit()
+        db.refresh(nueva)
+        return {
+            "mensaje": "¡Cita manual validada y programada con éxito en la agenda!", 
+            "cita_id": nueva.id,
+            "personal_asignado_id": personal_id_final
+        }
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="⚠️ Esta referencia o datos duplicados colisionan con otra transacción simultánea.")
 
-    enviar_mensaje_whatsapp(nueva.whatsapp_clienta, "cita_programada_detalles", [nueva.nombre_clienta, dt_inicio.strftime("%Y-%m-%d %I:%M %p"), serv.nombre])
-    return {"mensaje": "Agendado con éxito.", "cita_id": nueva.id, "monto_abonado": monto_abonado, "saldo_pendiente": saldo_pendiente}
 
+# ==========================================
+# ENDPOINT: LIQUIDAR SALDO
+# ==========================================
 @app.put("/api/citas/{cita_id}/liquidar")
 def liquidar_saldo_cita(cita_id: int, data: LiquidarCitaSchema, db: Session = Depends(get_db)):
     c = db.query(models.Cita).filter(models.Cita.id == cita_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Cita no encontrada.")
     
-    if getattr(c, 'saldo_pendiente_usd', 0.0) <= 0:
+    saldo_pend = getattr(c, 'saldo_pendiente_usd', 0.0) or 0.0
+    if saldo_pend <= 0 and getattr(c, 'estado_financiero_pago', '') == 'pagado':
         return {"mensaje": "La cita ya se encuentra totalmente pagada."}
 
+    monto_total = getattr(c, 'monto_total_usd', 0.0) or (getattr(c, 'monto_abonado_usd', 0.0) + saldo_pend)
+    monto_actual = getattr(c, 'monto_abonado_usd', 0.0) or getattr(c, 'monto_pagado', 0.0)
+    nuevo_monto = monto_actual + saldo_pend if saldo_pend > 0 else monto_actual
+    if nuevo_monto <= 0 and monto_total > 0:
+        nuevo_monto = monto_total
+
+    c.monto_pagado = nuevo_monto
+    c.monto_abonado_usd = nuevo_monto
     c.saldo_pendiente_usd = 0.0
     c.estado_financiero_pago = "pagado"
+    c.modalidad_pago = "Pago Completo 100%"
+    c.estado = "completada"
     c.referencia_segundo_pago = sanitizar_texto(data.referencia_segundo_pago or "EfectivoEnSalon")
+    
+    tasa = getattr(c, 'tasa_bcv_historica', None) or leer_tasa_local(db)
+    c.monto_bs = nuevo_monto * tasa
+    
     db.commit()
-    return {"mensaje": "¡Saldo pendiente liquidado y contabilidad actualizada con éxito!"}
+    db.refresh(c)
+    
+    return {
+        "mensaje": "¡Pago del abono y saldo pendiente registrado con éxito!",
+        "cita_id": c.id,
+        "monto_pagado": c.monto_pagado,
+        "monto_bs": c.monto_bs,
+        "estado_financiero_pago": c.estado_financiero_pago
+    }
+
 
 @app.get("/api/citas/")
-def obtener_citas(profesional_id: int = None, db: Session = Depends(get_db)):
+def obtener_citas(profesional_id: int = None, mes: int = None, anio: int = None, db: Session = Depends(get_db)):
     q = db.query(models.Cita)
     if profesional_id:
         q = q.filter(models.Cita.profesional_id == profesional_id)
-    citas = q.order_by(models.Cita.fecha_hora_inicio.desc()).all()
+    
+    if mes and anio:
+        inicio_mes = datetime.datetime(anio, mes, 1)
+        if mes == 12:
+            fin_mes = datetime.datetime(anio + 1, 1, 1)
+        else:
+            fin_mes = datetime.datetime(anio, mes + 1, 1)
+        q = q.filter(models.Cita.fecha_hora_inicio >= inicio_mes, models.Cita.fecha_hora_inicio < fin_mes)
+
+    citas = q.order_by(
+        models.Cita.estado.in_(["pendiente", "confirmada"]).desc(),
+        models.Cita.fecha_hora_inicio.desc()
+    ).all()
+    
+    prof_obj = db.query(models.Profesional).filter(models.Profesional.id == profesional_id).first() if profesional_id else None
+    pais_s = str(prof_obj.pais or "VE").strip().upper() if prof_obj else "VE"
+
     res = []
     for c in citas:
         serv = db.query(models.Servicio).filter(models.Servicio.id == c.servicio_id).first()
         pers = db.query(models.Personal).filter(models.Personal.id == c.personal_id).first() if c.personal_id else None
+        
+        f_inicio_str = ""
+        if c.fecha_hora_inicio:
+            f_inicio_str = c.fecha_hora_inicio.strftime("%m/%d/%Y %H:%M") if pais_s == "US" else c.fecha_hora_inicio.strftime("%d/%m/%Y %I:%M %p")
+
+        monto_total_calculado = c.monto_total_usd if getattr(c, 'monto_total_usd', None) is not None else (serv.precio_usd if serv else 0.0)
+        monto_abonado_calculado = c.monto_abonado_usd if getattr(c, 'monto_abonado_usd', None) is not None else c.monto_pagado
+        saldo_pendiente_calculado = c.saldo_pendiente_usd if getattr(c, 'saldo_pendiente_usd', None) is not None else max(0.0, monto_total_calculado - (monto_abonado_calculado or 0.0))
+
         res.append({
             "id": c.id, 
             "nombre_clienta": c.nombre_clienta, 
             "whatsapp_clienta": c.whatsapp_clienta,
             "servicio": serv.nombre if serv else "Desconocido", 
             "personal": pers.nombre if pers else "General",
-            "precio_total_usd": c.monto_total_usd if getattr(c, 'monto_total_usd', None) is not None else (serv.precio_usd if serv else 0.0),
-            "monto_abonado_usd": c.monto_abonado_usd if getattr(c, 'monto_abonado_usd', None) is not None else c.monto_pagado,
-            "saldo_pendiente_usd": c.saldo_pendiente_usd if getattr(c, 'saldo_pendiente_usd', None) is not None else 0.0,
+            "precio_total_usd": monto_total_calculado,
+            "monto_abonado_usd": monto_abonado_calculado,
+            "saldo_pendiente_usd": saldo_pendiente_calculado,
             "modalidad_pago": getattr(c, 'modalidad_pago', 'completo'),
             "estado_financiero_pago": getattr(c, 'estado_financiero_pago', 'pagado'),
-            "fecha_hora_inicio": c.fecha_hora_inicio.strftime("%Y-%m-%d %I:%M %p"),
+            "fecha_hora_inicio": f_inicio_str,
             "referencia_pago_movil": c.referencia_pago_movil, 
             "referencia_segundo_pago": getattr(c, 'referencia_segundo_pago', None),
             "monto_pagado": c.monto_pagado, 
@@ -1732,6 +2397,27 @@ def obtener_citas(profesional_id: int = None, db: Session = Depends(get_db)):
             "estado": c.estado
         })
     return res
+
+@app.get("/api/profesional/{profesional_id}/meses-citas")
+def obtener_meses_citas(profesional_id: int, db: Session = Depends(get_db)):
+    citas = db.query(models.Cita.fecha_hora_inicio).filter(
+        models.Cita.profesional_id == profesional_id,
+        models.Cita.fecha_hora_inicio.isnot(None)
+    ).all()
+    
+    meses_set = set()
+    for (f_inicio,) in citas:
+        if f_inicio:
+            meses_set.add((f_inicio.year, f_inicio.month))
+            
+    meses_ordenados = sorted(list(meses_set), reverse=True)
+    nombres_meses = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+    
+    resultado = [
+        {"anio": y, "mes": m, "etiqueta": f"{nombres_meses[m]} {y}"}
+        for y, m in meses_ordenados
+    ]
+    return resultado
 
 @app.get("/api/citas/cliente/{whatsapp}")
 def consultar_citas_cliente(whatsapp: str, profesional_id: int = None, db: Session = Depends(get_db)):
@@ -1742,26 +2428,38 @@ def consultar_citas_cliente(whatsapp: str, profesional_id: int = None, db: Sessi
         q = q.filter(models.Cita.profesional_id == profesional_id)
         
     citas_activas = q.all()
-    res = []
     
+    prof_obj = db.query(models.Profesional).filter(models.Profesional.id == profesional_id).first() if profesional_id else None
+    pais_s = str(prof_obj.pais or "VE").strip().upper() if prof_obj else "VE"
+
+    res = []
     for c in citas_activas:
         wsp_guardado = "".join(filter(str.isdigit, c.whatsapp_clienta or ""))
         
         if wsp_guardado.endswith(whatsapp_limpio) or whatsapp_limpio.endswith(wsp_guardado):
             serv = db.query(models.Servicio).filter(models.Servicio.id == c.servicio_id).first()
             pers = db.query(models.Personal).filter(models.Personal.id == c.personal_id).first() if c.personal_id else None
+            
+            f_inicio_str = ""
+            if c.fecha_hora_inicio:
+                f_inicio_str = c.fecha_hora_inicio.strftime("%m/%d/%Y %H:%M") if pais_s == "US" else c.fecha_hora_inicio.strftime("%d/%m/%Y %I:%M %p")
+
+            monto_total_calculado = c.monto_total_usd if getattr(c, 'monto_total_usd', None) is not None else (serv.precio_usd if serv else 0.0)
+            monto_abonado_calculado = c.monto_abonado_usd if getattr(c, 'monto_abonado_usd', None) is not None else c.monto_pagado
+            saldo_pendiente_calculado = c.saldo_pendiente_usd if getattr(c, 'saldo_pendiente_usd', None) is not None else max(0.0, monto_total_calculado - (monto_abonado_calculado or 0.0))
+
             res.append({
                 "id": c.id, 
                 "nombre_clienta": c.nombre_clienta, 
                 "whatsapp_clienta": c.whatsapp_clienta,
                 "servicio": serv.nombre if serv else "Desconocido", 
                 "personal": pers.nombre if pers else "General",
-                "precio_total_usd": c.monto_total_usd if getattr(c, 'monto_total_usd', None) is not None else (serv.precio_usd if serv else 0.0),
-                "monto_abonado_usd": c.monto_abonado_usd if getattr(c, 'monto_abonado_usd', None) is not None else c.monto_pagado,
-                "saldo_pendiente_usd": c.saldo_pendiente_usd if getattr(c, 'saldo_pendiente_usd', None) is not None else 0.0,
+                "precio_total_usd": monto_total_calculado,
+                "monto_abonado_usd": monto_abonado_calculado,
+                "saldo_pendiente_usd": saldo_pendiente_calculado,
                 "modalidad_pago": getattr(c, 'modalidad_pago', 'completo'),
                 "estado_financiero_pago": getattr(c, 'estado_financiero_pago', 'pagado'),
-                "fecha_hora_inicio": c.fecha_hora_inicio.strftime("%Y-%m-%d %I:%M %p"), 
+                "fecha_hora_inicio": f_inicio_str, 
                 "monto_pagado": c.monto_pagado, 
                 "estado": c.estado
             })
@@ -1770,26 +2468,44 @@ def consultar_citas_cliente(whatsapp: str, profesional_id: int = None, db: Sessi
 @app.patch("/api/citas/{cita_id}/estado")
 def cambiar_estado_cita(cita_id: int, nuevo_estado: str, db: Session = Depends(get_db)):
     c = db.query(models.Cita).filter(models.Cita.id == cita_id).first()
-    if c:
-        ant = c.estado
-        nuevo_est_limpio = sanitizar_texto(nuevo_estado)
-        c.estado = nuevo_est_limpio
-        
-        if nuevo_est_limpio == "completada" and ant != "completada":
-            if hasattr(models, 'ServicioInsumoRelacion') and hasattr(models, 'ProductoInsumo'):
-                relaciones = db.query(models.ServicioInsumoRelacion).filter(models.ServicioInsumoRelacion.servicio_id == c.servicio_id).all()
-                for rel in relaciones:
-                    prod = db.query(models.ProductoInsumo).filter(models.ProductoInsumo.id == rel.producto_id).first()
-                    if prod:
-                        prod.stock_actual = max(0.0, prod.stock_actual - rel.cantidad_consumida)
+    if not c:
+        raise HTTPException(status_code=404, detail="⚠️ Cita no encontrada en la base de datos.")
+    
+    estados_validos = ["pendiente", "confirmada", "completada", "cancelada"]
+    nuevo_est_limpio = sanitizar_texto(nuevo_estado).lower()
+    
+    if nuevo_est_limpio not in estados_validos:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"⚠️ Estado inválido ('{nuevo_estado}'). Los estados permitidos son: {', '.join(estados_validos)}"
+        )
 
-        db.commit()
+    ant = c.estado
+    c.estado = nuevo_est_limpio
+    
+    if nuevo_est_limpio == "completada" and ant != "completada":
+        if hasattr(models, 'ServicioInsumoRelacion') and hasattr(models, 'ProductoInsumo'):
+            relaciones = db.query(models.ServicioInsumoRelacion).filter(models.ServicioInsumoRelacion.servicio_id == c.servicio_id).all()
+            for rel in relaciones:
+                prod = db.query(models.ProductoInsumo).filter(models.ProductoInsumo.id == rel.producto_id).first()
+                if prod:
+                    prod.stock_actual = max(0.0, prod.stock_actual - rel.cantidad_consumida)
+
+    db.commit()
+
+    try:
+        prof_c = db.query(models.Profesional).filter(models.Profesional.id == c.profesional_id).first()
+        p_s = str(prof_c.pais or "VE").strip().upper() if prof_c else "VE"
+        f_cita_fmt = c.fecha_hora_inicio.strftime("%m/%d/%Y %H:%M") if p_s == "US" else c.fecha_hora_inicio.strftime("%Y-%m-%d %I:%M %p")
 
         if ant != "confirmada" and c.estado == "confirmada":
-            enviar_mensaje_whatsapp(c.whatsapp_clienta, "cita_confirmada_admin", [c.nombre_clienta, c.fecha_hora_inicio.strftime("%Y-%m-%d %I:%M %p")])
+            enviar_mensaje_whatsapp(c.whatsapp_clienta, "cita_confirmada_admin", [c.nombre_clienta, f_cita_fmt])
         elif c.estado == "cancelada":
-            enviar_mensaje_whatsapp(c.whatsapp_clienta, "cita_cancelada_admin", [c.nombre_clienta, c.fecha_hora_inicio.strftime("%Y-%m-%d %I:%M %p")])
-    return {"mensaje": "Actualizado"}
+            enviar_mensaje_whatsapp(c.whatsapp_clienta, "cita_cancelada_admin", [c.nombre_clienta, f_cita_fmt])
+    except Exception as e:
+        logger.error(f"Error al enviar notificación WhatsApp al cambiar estado de cita {cita_id}: {e}")
+
+    return {"mensaje": f"Estado de la cita actualizado a '{nuevo_est_limpio}' con éxito."}
 
 @app.put("/api/citas/{cita_id}/reprogramar")
 def reprogramar_cita(cita_id: int, data: schemas.CitaReprogramar, db: Session = Depends(get_db)):
@@ -1797,7 +2513,6 @@ def reprogramar_cita(cita_id: int, data: schemas.CitaReprogramar, db: Session = 
     if not c:
         raise HTTPException(status_code=404, detail="Cita no encontrada")
     
-    # 1. Validar formato de la nueva fecha y hora
     try:
         dt_inicio = datetime.datetime.strptime(data.nueva_fecha_hora_str, "%Y-%m-%d %H:%M")
     except Exception:
@@ -1814,7 +2529,6 @@ def reprogramar_cita(cita_id: int, data: schemas.CitaReprogramar, db: Session = 
     prof_id = c.profesional_id
     personal_id_a_verificar = c.personal_id
 
-    # 2. Verificar si el salón o el especialista están bloqueados en esa fecha
     fecha_str = dt_inicio.strftime("%Y-%m-%d")
     if db.query(models.DiaBloqueado).filter(
         models.DiaBloqueado.profesional_id == prof_id, 
@@ -1830,7 +2544,6 @@ def reprogramar_cita(cita_id: int, data: schemas.CitaReprogramar, db: Session = 
     ).first():
         raise HTTPException(status_code=400, detail="⚠️ El especialista asignado se encuentra ausente en esta fecha.")
 
-    # 3. Verificar jornada laboral del día
     dias_semana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
     nombre_dia_str = dias_semana[dt_inicio.weekday()]
     horario = db.query(models.HorarioProfesional).filter(
@@ -1862,7 +2575,6 @@ def reprogramar_cita(cita_id: int, data: schemas.CitaReprogramar, db: Session = 
     if not en_horario_general or cae_en_pausa:
         raise HTTPException(status_code=400, detail="⚠️ La nueva hora seleccionada está fuera de la jornada laboral o cae en pausa.")
 
-    # 4. Verificar si el especialista ya tiene otra cita cruzada en ese horario (excluyendo la cita actual)
     if personal_id_a_verificar:
         conflicto = db.query(models.Cita).filter(
             models.Cita.id != cita_id,
@@ -1875,14 +2587,17 @@ def reprogramar_cita(cita_id: int, data: schemas.CitaReprogramar, db: Session = 
         if conflicto:
             raise HTTPException(status_code=400, detail="⚠️ El especialista ya se encuentra ocupado en este nuevo horario.")
 
-    # 5. Aplicar la reprogramación si pasa todas las validaciones
     c.fecha_hora_inicio = dt_inicio
     c.fecha_hora_fin = dt_fin
     c.estado = "confirmada"
     db.commit()
 
     try:
-        enviar_mensaje_whatsapp(c.whatsapp_clienta, "cita_confirmada_admin", [c.nombre_clienta, dt_inicio.strftime("%Y-%m-%d %I:%M %p")])
+        prof_c = db.query(models.Profesional).filter(models.Profesional.id == c.profesional_id).first()
+        p_s = str(prof_c.pais or "VE").strip().upper() if prof_c else "VE"
+        f_cita_fmt = dt_inicio.strftime("%m/%d/%Y %H:%M") if p_s == "US" else dt_inicio.strftime("%Y-%m-%d %I:%M %p")
+
+        enviar_mensaje_whatsapp(c.whatsapp_clienta, "cita_confirmada_admin", [c.nombre_clienta, f_cita_fmt])
     except Exception:
         pass
 
@@ -1931,7 +2646,6 @@ def logout_master():
 
 @app.get("/api/super-admin/descargar-respaldo-db")
 def admin_descargar_respaldo_db(request: Request):
-    """Genera y descarga el archivo SQLite directamente al navegador con un solo clic."""
     verificar_sesion_master(request)
     
     posibles_rutas = ["bonnyn.db", "./bonnyn.db", "sql_app.db", "./sql_app.db"]
@@ -1990,6 +2704,11 @@ def admin_obtener_socios(request: Request, db: Session = Depends(get_db)):
         citas_completadas = db.query(models.Cita).filter(models.Cita.profesional_id == s.id, models.Cita.estado == "completada").count()
         citas_canceladas = db.query(models.Cita).filter(models.Cita.profesional_id == s.id, models.Cita.estado == "cancelada").count()
 
+        pais_s = str(s.pais or "VE").strip().upper()
+        venc_str = "Sin fecha"
+        if s.fecha_vencimiento:
+            venc_str = s.fecha_vencimiento.strftime("%m/%d/%Y") if pais_s == "US" else s.fecha_vencimiento.strftime("%d/%m/%Y")
+
         resultado.append({
             "id": s.id,
             "nombre_negocio": s.nombre_negocio,
@@ -2004,7 +2723,7 @@ def admin_obtener_socios(request: Request, db: Session = Depends(get_db)):
             "citas_activas": citas_activas,
             "citas_completadas": citas_completadas,
             "citas_canceladas": citas_canceladas,
-            "fecha_vencimiento": s.fecha_vencimiento.strftime("%Y-%m-%d") if s.fecha_vencimiento else "Sin fecha",
+            "fecha_vencimiento": venc_str,
             "monto_multa_pendiente": getattr(s, "monto_multa_pendiente", 0.0)
         })
     return resultado
@@ -2016,6 +2735,11 @@ def admin_pagos_pendientes(request: Request, db: Session = Depends(get_db)):
     resultado = []
     for p in pagos:
         prof = db.query(models.Profesional).filter(models.Profesional.id == p.profesional_id).first()
+        pais_s = str(prof.pais or "VE").strip().upper() if prof else "VE"
+        f_pago_str = ""
+        if p.fecha_pago:
+            f_pago_str = p.fecha_pago.strftime("%m/%d/%Y %H:%M") if pais_s == "US" else p.fecha_pago.strftime("%d/%m/%Y %I:%M %p")
+
         resultado.append({
             "pago_id": p.id,
             "profesional_id": p.profesional_id,
@@ -2025,17 +2749,23 @@ def admin_pagos_pendientes(request: Request, db: Session = Depends(get_db)):
             "monto_usd": p.monto_usd,
             "monto_bs": p.monto_bs,
             "referencia": p.referencia_pago,
-            "fecha": p.fecha_pago.strftime("%Y-%m-%d %I:%M %p")
+            "fecha": f_pago_str
         })
     return resultado
 
 @app.get("/api/super-admin/todos-los-pagos")
-def admin_todos_los_pagos(request: Request, db: Session = Depends(get_db)):
+def admin_todos_los_pagos(request: Request, skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
     verificar_sesion_master(request)
-    pagos = db.query(models.PagoSuscripcion).order_by(models.PagoSuscripcion.fecha_pago.desc()).limit(200).all()
+    # Paginación nativa eficiente implementada
+    pagos = db.query(models.PagoSuscripcion).order_by(models.PagoSuscripcion.fecha_pago.desc()).offset(skip).limit(limit).all()
     resultado = []
     for p in pagos:
         prof = db.query(models.Profesional).filter(models.Profesional.id == p.profesional_id).first()
+        pais_s = str(prof.pais or "VE").strip().upper() if prof else "VE"
+        f_pago_str = ""
+        if p.fecha_pago:
+            f_pago_str = p.fecha_pago.strftime("%m/%d/%Y %H:%M") if pais_s == "US" else p.fecha_pago.strftime("%d/%m/%Y %I:%M %p")
+
         resultado.append({
             "pago_id": p.id,
             "nombre_negocio": prof.nombre_negocio if prof else "Desconocido",
@@ -2044,7 +2774,7 @@ def admin_todos_los_pagos(request: Request, db: Session = Depends(get_db)):
             "monto_bs": p.monto_bs,
             "referencia": p.referencia_pago,
             "estado_pago": p.estado_pago,
-            "fecha": p.fecha_pago.strftime("%Y-%m-%d %I:%M %p")
+            "fecha": f_pago_str
         })
     return resultado
 
@@ -2095,16 +2825,32 @@ def admin_cambiar_plan_socio(socio_id: int, data: dict, request: Request, db: Se
     if not s:
         raise HTTPException(status_code=404, detail="Socio no encontrado")
     
-    if "plan" in data:
-        s.plan = sanitizar_texto(data["plan"]).lower()
-    if "fecha_vencimiento" in data and data["fecha_vencimiento"]:
+    nuevo_plan = data.get("plan") or data.get("nuevo_plan")
+    if nuevo_plan:
+        s.plan = str(nuevo_plan).strip().lower()
+        if s.plan in ["profesional", "elite"]:
+            s.estado_cuenta = "activo"
+            s.monto_multa_pendiente = 0.0
+            s.motivo_multa = None
+            if not s.fecha_vencimiento or s.fecha_vencimiento < datetime.datetime.now():
+                s.fecha_vencimiento = datetime.datetime.now() + datetime.timedelta(days=30)
+
+    nueva_fecha = data.get("fecha_vencimiento")
+    if nueva_fecha:
         try:
-            s.fecha_vencimiento = datetime.datetime.strptime(data["fecha_vencimiento"], "%Y-%m-%d")
+            s.fecha_vencimiento = datetime.datetime.strptime(str(nueva_fecha).split("T")[0], "%Y-%m-%d")
         except Exception:
-            raise HTTPException(status_code=400, detail="Formato de fecha inválido (YYYY-MM-DD)")
+            pass
     
     db.commit()
-    return {"mensaje": "Plan y vencimiento actualizados con éxito"}
+    db.refresh(s)
+
+    pais_s = str(s.pais or "VE").strip().upper()
+    venc_str = str(s.fecha_vencimiento)
+    if s.fecha_vencimiento:
+        venc_str = s.fecha_vencimiento.strftime("%m/%d/%Y") if pais_s == "US" else s.fecha_vencimiento.strftime("%d/%m/%Y")
+
+    return {"mensaje": "Plan y vencimiento actualizados con éxito", "plan": s.plan, "fecha_vencimiento": venc_str}
 
 
 # ==========================================

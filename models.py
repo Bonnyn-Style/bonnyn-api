@@ -204,6 +204,28 @@ class ServicioInsumoRelacion(Base):
     producto_id = Column(Integer, ForeignKey("productos_insumos.id"), nullable=False, index=True)
     cantidad_consumida = Column(Float, nullable=False) # Ej: 15ml o 1 par
 
+class VentaProducto(Base):
+    __tablename__ = "ventas_productos"
+    id = Column(Integer, primary_key=True, index=True)
+    profesional_id = Column(Integer, ForeignKey("profesionales.id"), index=True)
+    producto_id = Column(Integer, ForeignKey("productos_insumos.id"), index=True)
+    cantidad = Column(Float, default=1.0)
+    total_usd = Column(Float, default=0.0)
+    fecha_venta = Column(DateTime, default=datetime.datetime.now, index=True)
+
+# --- MODELO DE REGISTRO CONTABLE DE VENTA DIRECTA (HÍBRIDO) ---
+class VentaDirectaRegistro(Base):
+    __tablename__ = "ventas_directas_registros"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    profesional_id = Column(Integer, ForeignKey("profesionales.id"), nullable=False, index=True)
+    producto_id = Column(Integer, nullable=False, index=True)
+    nombre_producto = Column(String(100), nullable=False)
+    cantidad = Column(Float, nullable=False)
+    precio_unitario = Column(Float, nullable=False)
+    total_usd = Column(Float, nullable=False)
+    fecha_venta = Column(DateTime, default=datetime.datetime.now, index=True)
+
 class LoyaltyAccount(Base):
     __tablename__ = "loyalty_accounts"
     id = Column(Integer, primary_key=True, index=True)

@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Panel Master Impenetrable | Bonnyn Global</title>
+
+    <!-- Favicon / Icono de la Pestaña del Navegador -->
+    <link rel="icon" type="image/png" href="/static/logos/icon-192.png">
+    <link rel="apple-touch-icon" href="/static/logos/icon-192.png">
     
     <!-- Configuración PWA y Enlace de Manifiesto -->
     <link rel="manifest" href="/static/manifest.json">
@@ -408,6 +412,37 @@
         let sociosGlobal = [];
         let tasaBcvGlobal = 889.26; // Tasa de respaldo por defecto
 
+        // FUNCIÓN AUXILIAR DE FORMATEO DE FECHA Y HORA ESTÁNDAR LATAM (DD/MM/AAAA hh:mm AM/PM)
+        function formatearFechaHoraLatam(fechaStr) {
+            if (!fechaStr) return '-';
+            // Si viene con formato ISO o YYYY-MM-DD HH:mm:ss
+            let limpiar = fechaStr.replace('T', ' ');
+            let partes = limpiar.split(' ');
+            let fechaPartes = partes[0].split('-');
+            
+            if (fechaPartes.length === 3) {
+                let anio = fechaPartes[0];
+                let mes = fechaPartes[1];
+                let dia = fechaPartes[2];
+                let fechaFormateada = `${dia}/${mes}/${anio}`;
+
+                if (partes.length > 1 && partes[1]) {
+                    let horaPartes = partes[1].split(':');
+                    if (horaPartes.length >= 2) {
+                        let h = parseInt(horaPartes[0], 10);
+                        let m = horaPartes[1];
+                        let ampm = h >= 12 ? 'PM' : 'AM';
+                        h = h % 12;
+                        h = h ? h : 12; // La hora 0 es 12
+                        let horaStr = `${String(h).padStart(2, '0')}:${m} ${ampm}`;
+                        return `${fechaFormateada} ${horaStr}`;
+                    }
+                }
+                return fechaFormateada;
+            }
+            return fechaStr;
+        }
+
         // VERIFICAR SESIÓN REAL CON EL BACKEND AL CARGAR
         async function verificarAutenticacionPrevia() {
             try {
@@ -473,13 +508,14 @@
                 } else {
                     pendientes.forEach(p => {
                         let conceptoTexto = p.nuevo_plan === 'multa_reactivacion' ? 'Multa de Reactivación ($10.00)' : `Plan ${p.nuevo_plan.toUpperCase()}`;
+                        let fechaFormateada = formatearFechaHoraLatam(p.fecha);
                         let div = document.createElement('div');
                         div.className = "p-4 bg-slate-950/80 border border-slate-800 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-xs shadow-sm";
                         div.innerHTML = `
                             <div>
                                 <p class="font-black text-white text-sm">${p.nombre_negocio} <span class="text-pink-400 font-normal">(${conceptoTexto})</span></p>
                                 <p class="text-slate-400">Monto: <strong>$${p.monto_usd.toFixed(2)} (Bs. ${p.monto_bs.toLocaleString('es-VE', {minimumFractionDigits: 2})})</strong> | Ref: <strong class="text-amber-400 font-mono">${p.referencia}</strong></p>
-                                <p class="text-[10px] text-slate-500">${p.fecha}</p>
+                                <p class="text-[10px] text-slate-500">${fechaFormateada}</p>
                             </div>
                             <div class="flex gap-2">
                                 <button onclick="aprobarPago(${p.pago_id})" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg transition">Aprobar</button>
@@ -640,11 +676,12 @@
 
                 let concepto = p.nuevo_plan === 'multa_reactivacion' ? 'Multa $10' : `Plan ${p.nuevo_plan.toUpperCase()}`;
                 let badgeEstado = '<span class="text-emerald-400 font-bold uppercase text-[10px]">Aprobado</span>';
+                let fechaFormateada = formatearFechaHoraLatam(p.fecha);
 
                 let tr = document.createElement('tr');
                 tr.className = "hover:bg-slate-900/60 transition";
                 tr.innerHTML = `
-                    <td class="p-3 text-slate-300">${p.fecha || 'Fecha N/A'}</td>
+                    <td class="p-3 text-slate-300">${fechaFormateada}</td>
                     <td class="p-3 font-bold text-white">${p.nombre_negocio || 'Salón Socio'}</td>
                     <td class="p-3 text-pink-400 font-semibold">${concepto}</td>
                     <td class="p-3 text-slate-300">Pago Móvil / Int.</td>
@@ -678,7 +715,8 @@
             
             pagosGlobal.filter(p => p.estado_pago === 'aprobado').forEach(p => {
                 let montoBs = p.monto_bs || (p.monto_usd * tasaBcvGlobal);
-                let fechaLimpia = `"${(p.fecha || '').replace(/"/g, '""')}"`;
+                let fechaFormateada = formatearFechaHoraLatam(p.fecha);
+                let fechaLimpia = `"${fechaFormateada.replace(/"/g, '""')}"`;
                 let negocioLimpio = `"${(p.nombre_negocio || '').replace(/"/g, '""')}"`;
                 let conceptoLimpio = `"${(p.nuevo_plan || '').replace(/"/g, '""')}"`;
                 let refLimpia = `"${(p.referencia || '').replace(/"/g, '""')}"`;
@@ -701,10 +739,11 @@
             let brutoTotalUsd = pagosGlobal.filter(p => p.estado_pago === 'aprobado').reduce((acc, curr) => acc + curr.monto_usd, 0);
             let html = `<html><head><title>Auditoría Contable Bonnyn</title><style>body{font-family:sans-serif;font-size:12px;padding:20px;} table{width:100%;border-collapse:collapse;margin-top:15px;} th,td{border:1px solid #ccc;padding:8px;text-align:left;} th{background:#f4f4f4;}</style></head><body>`;
             html += `<h2>Reporte Ejecutivo Contable - Bonnyn Global</h2>`;
-            html += `<p>Fecha de Emisión: <strong>${new Date().toLocaleString()}</strong></p>`;
+            html += `<p>Fecha de Emisión: <strong>${formatearFechaHoraLatam(new Date().toISOString())}</strong></p>`;
             html += `<table><thead><tr><th>Fecha</th><th>Negocio Socio</th><th>Concepto</th><th>Referencia</th><th>Monto USD</th><th>Estado</th></tr></thead><tbody>`;
             pagosGlobal.filter(p => p.estado_pago === 'aprobado').forEach(p => {
-                html += `<tr><td>${p.fecha}</td><td>${p.nombre_negocio}</td><td>${p.nuevo_plan}</td><td>${p.referencia}</td><td>$${p.monto_usd.toFixed(2)}</td><td>${p.estado_pago}</td></tr>`;
+                let fechaFormateada = formatearFechaHoraLatam(p.fecha);
+                html += `<tr><td>${fechaFormateada}</td><td>${p.nombre_negocio}</td><td>${p.nuevo_plan}</td><td>${p.referencia}</td><td>$${p.monto_usd.toFixed(2)}</td><td>${p.estado_pago}</td></tr>`;
             });
             html += `</tbody></table>`;
             html += `<h3>Ingreso Bruto Acumulado: $${brutoTotalUsd.toFixed(2)}</h3>`;
@@ -729,6 +768,15 @@
                     ? `<button onclick="cambiarEstadoSocio(${s.id}, 'baneado')" class="px-2.5 py-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 font-bold rounded-lg border border-rose-500/20 transition">Suspender</button>`
                     : `<button onclick="cambiarEstadoSocio(${s.id}, 'activo')" class="px-2.5 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 font-bold rounded-lg border border-emerald-500/20 transition">Activar</button>`;
 
+                // Formatear fecha de vencimiento de licencia a formato estricto DD/MM/AAAA
+                let vencimientoFormateado = s.fecha_vencimiento;
+                if (s.fecha_vencimiento && s.fecha_vencimiento.includes('-')) {
+                    let partesV = s.fecha_vencimiento.split(' ')[0].split('-');
+                    if (partesV.length === 3) {
+                        vencimientoFormateado = `${partesV[2]}/${partesV[1]}/${partesV[0]}`;
+                    }
+                }
+
                 let tr = document.createElement('tr');
                 tr.className = "hover:bg-slate-900/60 transition";
                 tr.innerHTML = `
@@ -742,7 +790,7 @@
                     </td>
                     <td class="p-3">
                         <span class="px-2 py-0.5 rounded-md font-bold uppercase text-[10px] border ${badgePlan}">${s.plan}</span>
-                        <p class="text-[10px] text-slate-400 mt-1">Vence: ${s.fecha_vencimiento}</p>
+                        <p class="text-[10px] text-slate-400 mt-1">Vence: ${vencimientoFormateado}</p>
                     </td>
                     <td class="p-3 text-slate-300">
                         <p>Total: <strong>${s.citas_total}</strong></p>
@@ -774,6 +822,7 @@
             pagos.forEach(p => {
                 let badge = p.estado_pago === 'aprobado' ? 'text-emerald-400' : (p.estado_pago === 'rechazado' ? 'text-rose-400' : 'text-amber-400');
                 let concepto = p.nuevo_plan === 'multa_reactivacion' ? 'Multa $10' : p.nuevo_plan.toUpperCase();
+                let fechaFormateada = formatearFechaHoraLatam(p.fecha);
                 let tr = document.createElement('tr');
                 tr.className = "hover:bg-slate-900/60 transition";
                 tr.innerHTML = `
@@ -782,7 +831,7 @@
                     <td class="p-3 text-slate-300">$${p.monto_usd.toFixed(2)} <span class="text-[10px] text-slate-500">(Bs. ${p.monto_bs.toLocaleString('es-VE', {minimumFractionDigits: 2})})</span></td>
                     <td class="p-3 font-mono text-amber-300 font-bold">${p.referencia}</td>
                     <td class="p-3 uppercase font-black text-[10px] ${badge}">${p.estado_pago}</td>
-                    <td class="p-3 text-slate-400 text-[11px]">${p.fecha}</td>
+                    <td class="p-3 text-slate-400 text-[11px]">${fechaFormateada}</td>
                 `;
                 tbody.appendChild(tr);
             });
