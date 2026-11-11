@@ -249,3 +249,20 @@ class GastoLogistica(Base):
     detalle = Column(String(255), nullable=False)
     categoria = Column(String(50), default="Insumos", index=True) # Insumos, Logística, Alquiler, etc.
     fecha_gasto = Column(DateTime, default=datetime.datetime.now, index=True)
+
+# --- NUEVO MODELO DE CIERRES DE CAJA DIARIOS POR ESPECIALISTA ---
+class CierreCajaDiario(Base):
+    __tablename__ = "cierres_caja_diarios"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    fecha = Column(String, index=True)  # Formato "YYYY-MM-DD"
+    profesional_id = Column(Integer, ForeignKey("profesionales.id"), nullable=False, index=True)
+    personal_id = Column(Integer, ForeignKey("personal.id"), nullable=False, index=True)
+    citas_completadas_count = Column(Integer, default=0)
+    total_bruto = Column(Float, default=0.0)
+    total_iva = Column(Float, default=0.0)
+    comision_especialista = Column(Float, default=0.0)
+    ganancia_salon = Column(Float, default=0.0)
+    tasa_bcv_cierre = Column(Float, default=0.0)
+    monto_bs_total = Column(Float, default=0.0)
+    fecha_registro = Column(DateTime, default=datetime.datetime.now, index=True)

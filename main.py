@@ -355,6 +355,86 @@ def tarea_sondeo_bcv():
             logger.error(f"⚠️ [Recuperado] Error transitorio en sonda automática BCV: {e}")
             time.sleep(600)
 
+# ==========================================
+# LÓGICA DE CIERRES DE CAJA DIARIOS (BACKGROUND)
+# ==========================================
+def procesar_cierre_caja_fecha(db: Session, profesional_id: int, fecha_str: str):
+    """Calcula y sella el cierre diario para todos los especialistas de un salón en una fecha específica (YYYY-MM-DD)."""
+    try:
+        f_inicio_obj = datetime.datetime.strptime(fecha_str, "%Y-%m-%d")
+        f_fin_obj = f_inicio_obj + datetime.timedelta(days=1)
+    except Exception:
+        return
+
+    # Verificar si ya existe cierre para este día y salón de forma segura
+    existentes = db.query(models.CierreCajaDiario).filter(
+        models.CierreCajaDiario.profesional_id == profesional_id,
+        models.CierreCajaDiario.fecha == fecha_str
+    ).count()
+    if existentes > 0:
+        return  # Ya fue cerrado previamente
+
+    personal_lista = db.query(models.Personal).filter(models.Personal.profesional_id == profesional_id).all()
+    tasa_cierre = leer_tasa_local(db)
+
+    for p in personal_lista:
+        citas_p = db.query(models.Cita).filter(
+            models.Cita.profesional_id == profesional_id,
+            models.Cita.personal_id == p.id,
+            models.Cita.estado == "completada",
+            models.Cita.fecha_hora_inicio >= f_inicio_obj,
+            models.Cita.fecha_hora_inicio < f_fin_obj
+        ).all()
+
+        total_bruto = sum([float(c.monto_pagado or 0.0) for c in citas_p])
+        citas_count = len(citas_p)
+
+        if citas_count == 0 and total_bruto == 0.0:
+            continue  # No hay movimiento para este especialista en este día
+
+        total_neto = total_bruto / 1.16
+        total_iva = total_bruto - total_neto
+        comision_pct = float(p.comision_porcentaje or 50.0) / 100.0
+        comision_especialista = total_neto * comision_pct
+        ganancia_salon = total_neto - comision_especialista
+
+        nuevo_cierre = models.CierreCajaDiario(
+            fecha=fecha_str,
+            profesional_id=profesional_id,
+            personal_id=p.id,
+            citas_completadas_count=citas_count,
+            total_bruto=round(total_bruto, 2),
+            total_iva=round(total_iva, 2),
+            comision_especialista=round(comision_especialista, 2),
+            ganancia_salon=round(ganancia_salon, 2),
+            tasa_bcv_cierre=tasa_cierre,
+            monto_bs_total=round(total_bruto * tasa_cierre, 2)
+        )
+        db.add(nuevo_cierre)
+    
+    db.commit()
+
+def verificar_y_sellar_cierres_pendientes(db: Session, profesional_id: int):
+    """Valida al primer acceso del día si hay días anteriores sin cerrar y los sella automáticamente."""
+    hoy_str = datetime.datetime.now().strftime("%Y-%m-%d")
+    
+    # Buscar la cita más antigua completada que no tenga cierre registrado
+    citas_antiguas = db.query(models.Cita).filter(
+        models.Cita.profesional_id == profesional_id,
+        models.Cita.estado == "completada",
+        models.Cita.fecha_hora_inicio.isnot(None)
+    ).order_by(models.Cita.fecha_hora_inicio.asc()).all()
+
+    fechas_a_revisar = set()
+    for c in citas_antiguas:
+        f_str = c.fecha_hora_inicio.strftime("%Y-%m-%d")
+        if f_str != hoy_str:
+            fechas_a_revisar.add(f_str)
+
+    for f_str in sorted(list(fechas_a_revisar)):
+        procesar_cierre_caja_fecha(db, profesional_id, f_str)
+
+
 def background_whatsapp_reminder_loop():
     logger.info("Iniciando servicio de notificaciones de WhatsApp y barrido automático de citas con resiliencia...")
     from database import SessionLocal
@@ -366,6 +446,11 @@ def background_whatsapp_reminder_loop():
 
             expirar_citas_pendientes_antiguas(db)
             completar_citas_pasadas_automaticamente(db)
+
+            # Cierres automáticos diarios para todos los salones activos
+            salones_activos = db.query(models.Profesional).filter(models.Profesional.estado_cuenta == "activo").all()
+            for sal in salones_activos:
+                verificar_y_sellar_cierres_pendientes(db, sal.id)
 
             t_2h_min = ahora + datetime.timedelta(hours=1, minutes=55)
             t_2h_max = ahora + datetime.timedelta(hours=2, minutes=5)
@@ -861,12 +946,12 @@ def obtener_dashboard_stats(
 
 
 # ==========================================
-# ENDPOINT: ESTADÍSTICAS Y DATOS ANALÍTICOS
+# ENDPOINT: ESTADÍSTICAS Y DATOS ANALÍTICOS (RESUMEN FINANCIERO DEL DÍA EN CURSO)
 # ==========================================
 @app.get("/api/profesional/{profesional_id}/estadisticas")
 def obtener_estadisticas_profesional(
     profesional_id: int, 
-    periodo: str = "mes", 
+    periodo: str = "hoy", 
     especialista: str = "todos", 
     db: Session = Depends(get_db)
 ):
@@ -881,19 +966,22 @@ def obtener_estadisticas_profesional(
     if plan == "profesional" and especialista != "todos":
         raise HTTPException(status_code=403, detail="⚠️ En el Plan Profesional solo puedes ver métricas globales. Actualiza a Elite ($29) para filtrar estadísticas por especialista.")
 
+    # Asegurar el cierre y sellado de días anteriores pendientes antes de calcular el día en curso
+    verificar_y_sellar_cierres_pendientes(db, profesional_id)
+
     citas = db.query(models.Cita).filter(models.Cita.profesional_id == profesional_id).all()
     
     if especialista != "todos":
         citas = [c for c in citas if c.personal_id and str(c.personal_id) == str(especialista)]
 
-    hoy = datetime.datetime.now()
+    hoy = datetime.datetime.now().date()
     citas_filtradas = []
     for c in citas:
         if not c.fecha_hora_inicio: continue
-        f_cita = c.fecha_hora_inicio
-        if periodo == "dia" and f_cita.date() != hoy.date(): continue
-        if periodo == "semana" and (hoy - f_cita).days > 7: continue
-        if periodo == "mes" and (f_cita.month != hoy.month or f_cita.year != hoy.year): continue
+        f_cita_date = c.fecha_hora_inicio.date()
+        if periodo == "hoy" and f_cita_date != hoy: continue
+        if periodo == "semana" and (datetime.datetime.now() - c.fecha_hora_inicio).days > 7: continue
+        if periodo == "mes" and (c.fecha_hora_inicio.month != hoy.month or c.fecha_hora_inicio.year != hoy.year): continue
         citas_filtradas.append(c)
 
     total_citas = len(citas_filtradas)
@@ -909,19 +997,19 @@ def obtener_estadisticas_profesional(
             v_reg = db.query(models.VentaDirectaRegistro).filter(models.VentaDirectaRegistro.profesional_id == profesional_id).all()
             for vr in v_reg:
                 if not vr.fecha_venta: continue
-                f_v = vr.fecha_venta
-                if periodo == "dia" and f_v.date() != hoy.date(): continue
-                if periodo == "semana" and (hoy - f_v).days > 7: continue
-                if periodo == "mes" and (f_v.month != hoy.month or f_v.year != hoy.year): continue
+                f_v = vr.fecha_venta.date()
+                if periodo == "hoy" and f_v != hoy: continue
+                if periodo == "semana" and (datetime.datetime.now() - vr.fecha_venta).days > 7: continue
+                if periodo == "mes" and (vr.fecha_venta.month != hoy.month or vr.fecha_venta.year != hoy.year): continue
                 ingresos_totales_ventas += float(vr.total_usd or 0.0)
         elif hasattr(models, 'VentaProducto'):
             v_prod = db.query(models.VentaProducto).filter(models.VentaProducto.profesional_id == profesional_id).all()
             for vp in v_prod:
                 if not vp.fecha_venta: continue
-                f_v = vp.fecha_venta
-                if periodo == "dia" and f_v.date() != hoy.date(): continue
-                if periodo == "semana" and (hoy - f_v).days > 7: continue
-                if periodo == "mes" and (f_v.month != hoy.month or f_v.year != hoy.year): continue
+                f_v = vp.fecha_venta.date()
+                if periodo == "hoy" and f_v != hoy: continue
+                if periodo == "semana" and (datetime.datetime.now() - vp.fecha_venta).days > 7: continue
+                if periodo == "mes" and (vp.fecha_venta.month != hoy.month or vp.fecha_venta.year != hoy.year): continue
                 ingresos_totales_ventas += float(vp.total_usd or 0.0)
 
     ingresos_totales_usd = ingresos_totales_citas + ingresos_totales_ventas
@@ -983,7 +1071,104 @@ def obtener_estadisticas_profesional(
 
 
 # ==========================================
-# ENDPOINT: EXPORTAR REPORTE CONTABLE
+# ENDPOINT: HISTORIAL DE CIERRES DIARIOS POR ESPECIALISTA
+# ==========================================
+@app.get("/api/profesional/{profesional_id}/historial-cierres-diarios")
+def obtener_historial_cierres_diarios(
+    profesional_id: int, 
+    personal_id: int = None, 
+    page: int = 1, 
+    limit: int = 5, 
+    db: Session = Depends(get_db)
+):
+    verificar_y_sellar_cierres_pendientes(db, profesional_id)
+    
+    q = db.query(models.CierreCajaDiario).filter(models.CierreCajaDiario.profesional_id == profesional_id)
+    if personal_id:
+        q = q.filter(models.CierreCajaDiario.personal_id == personal_id)
+
+    # Ordenar del más viejo al más nuevo cronológicamente por fecha ascendente
+    total_registros = q.count()
+    offset = (page - 1) * limit
+    cierres = q.order_by(models.CierreCajaDiario.fecha.asc()).offset(offset).limit(limit).all()
+
+    resultado = []
+    for c in cierres:
+        esp = db.query(models.Personal).filter(models.Personal.id == c.personal_id).first()
+        resultado.append({
+            "id": c.id,
+            "fecha": c.fecha,
+            "personal_id": c.personal_id,
+            "nombre_especialista": esp.nombre if esp else "Especialista",
+            "citas_completadas_count": c.citas_completadas_count,
+            "total_bruto": c.total_bruto,
+            "total_iva": c.total_iva,
+            "comision_especialista": c.comision_especialista,
+            "ganancia_salon": c.ganancia_salon,
+            "tasa_bcv_cierre": c.tasa_bcv_cierre,
+            "monto_bs_total": c.monto_bs_total
+        })
+
+    return {
+        "total": total_registros,
+        "page": page,
+        "limit": limit,
+        "total_paginas": (total_registros + limit - 1) // limit if limit > 0 else 1,
+        "cierres": resultado
+    }
+
+
+# ==========================================
+# ENDPOINT COMPATIBLE: CIERRES POR ESPECIALISTA (CORREGIDO SIN 404)
+# ==========================================
+@app.get("/api/profesional/{profesional_id}/cierres-especialista/{personal_id}")
+def obtener_cierre_por_especialista(
+    profesional_id: int, 
+    personal_id: int, 
+    db: Session = Depends(get_db)
+):
+    verificar_y_sellar_cierres_pendientes(db, profesional_id)
+    
+    cierre = db.query(models.CierreCajaDiario).filter(
+        models.CierreCajaDiario.profesional_id == profesional_id,
+        models.CierreCajaDiario.personal_id == personal_id
+    ).order_by(models.CierreCajaDiario.fecha.desc()).first()
+
+    esp = db.query(models.Personal).filter(models.Personal.id == personal_id).first()
+    nombre_esp = esp.nombre if esp else "Especialista"
+
+    if not cierre:
+        return {
+            "id": 0,
+            "fecha": datetime.datetime.now().strftime("%Y-%m-%d"),
+            "personal_id": personal_id,
+            "nombre_especialista": nombre_esp,
+            "citas_completadas_count": 0,
+            "total_bruto": 0.0,
+            "total_iva": 0.0,
+            "comision_especialista": 0.0,
+            "ganancia_salon": 0.0,
+            "tasa_bcv_cierre": leer_tasa_local(db),
+            "monto_bs_total": 0.0
+        }
+
+    return {
+        "id": cierre.id,
+        "fecha": cierre.fecha,
+        "personal_id": cierre.personal_id,
+        "nombre_especialista": nombre_esp,
+        "citas_completadas_count": cierre.citas_completadas_count,
+        "total_bruto": cierre.total_bruto,
+        "total_iva": cierre.total_iva,
+        "comision_especialista": cierre.comision_especialista,
+        "ganancia_salon": cierre.ganancia_salon,
+        "tasa_bcv_cierre": cierre.tasa_bcv_cierre,
+        "monto_bs_total": cierre.monto_bs_total
+    }
+
+
+# ==========================================
+# ENDPOINT: EXPORTAR REPORTE CONTABLE (CORREGIDO)
 # ==========================================
 @app.get("/api/profesional/{profesional_id}/exportar-reporte-contable")
 def exportar_reporte_contable(
@@ -1002,12 +1187,33 @@ def exportar_reporte_contable(
     if plan == "gratuito":
         raise HTTPException(status_code=403, detail="⚠️ El Plan Gratuito no incluye la exportación de reportes contables.")
     
+    # Resolver ID o texto del especialista de forma segura (Previene Internal Server Error)
+    personal_id_filtrar = None
+    nombre_esp_txt = "Todos los Especialistas"
+    
+    if especialista and especialista.lower() != "todos":
+        try:
+            if especialista.isdigit():
+                personal_id_filtrar = int(especialista)
+                esp_obj = db.query(models.Personal).filter(models.Personal.id == personal_id_filtrar).first()
+                if esp_obj: nombre_esp_txt = f"Especialista: {esp_obj.nombre}"
+            else:
+                esp_obj = db.query(models.Personal).filter(
+                    models.Personal.profesional_id == profesional_id,
+                    models.Personal.nombre.ilike(f"%{especialista.replace('%20', ' ')}%")
+                ).first()
+                if esp_obj:
+                    personal_id_filtrar = esp_obj.id
+                    nombre_esp_txt = f"Especialista: {esp_obj.nombre}"
+        except Exception:
+            personal_id_filtrar = None
+
     if plan == "profesional" and especialista != "todos":
         raise HTTPException(status_code=403, detail="⚠️ En el Plan Profesional solo puedes descargar el reporte global. Actualiza a Elite ($29) para reportes por especialista.")
 
     citas_query = db.query(models.Cita).filter(models.Cita.profesional_id == profesional_id)
-    if especialista != "todos":
-        citas_query = citas_query.filter(models.Cita.personal_id == int(especialista))
+    if personal_id_filtrar is not None:
+        citas_query = citas_query.filter(models.Cita.personal_id == personal_id_filtrar)
         
     citas = citas_query.all()
 
@@ -1022,7 +1228,7 @@ def exportar_reporte_contable(
         citas_filtradas.append(c)
 
     ventas_directas_filtradas = []
-    if especialista == "todos":
+    if especialista == "todos" or personal_id_filtrar is None:
         if hasattr(models, 'VentaDirectaRegistro'):
             v_reg = db.query(models.VentaDirectaRegistro).filter(models.VentaDirectaRegistro.profesional_id == profesional_id).all()
             for vr in v_reg:
@@ -1043,14 +1249,14 @@ def exportar_reporte_contable(
                 ventas_directas_filtradas.append(vp)
 
     gastos = []
-    if especialista == "todos" and hasattr(models, 'GastoLogistica'):
+    if (especialista == "todos" or personal_id_filtrar is None) and hasattr(models, 'GastoLogistica'):
         gastos = db.query(models.GastoLogistica).filter(models.GastoLogistica.profesional_id == profesional_id).all()
 
     multas = []
     if hasattr(models, 'MultaEspecialista'):
         m_query = db.query(models.MultaEspecialista).filter(models.MultaEspecialista.profesional_id == profesional_id)
-        if especialista != "todos":
-            m_query = m_query.filter(models.MultaEspecialista.personal_id == int(especialista))
+        if personal_id_filtrar is not None:
+            m_query = m_query.filter(models.MultaEspecialista.personal_id == personal_id_filtrar)
         multas = m_query.all()
 
     tasa_actual = leer_tasa_local(db)
@@ -1102,11 +1308,6 @@ def exportar_reporte_contable(
     ws.append([f"Reporte Financiero y Contable - {prof.nombre_negocio}"])
     ws.cell(row=1, column=1).font = fuente_titulo
     
-    nombre_esp_txt = "Todos los Especialistas"
-    if especialista != "todos":
-        esp_obj = db.query(models.Personal).filter(models.Personal.id == int(especialista)).first()
-        if esp_obj: nombre_esp_txt = f"Especialista: {esp_obj.nombre}"
-
     sub_txt = f"Filtro: {nombre_esp_txt} | Generado: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')} | Período: {periodo.capitalize()} | Moneda: {simbolo}"
     ws.append([sub_txt])
     ws.cell(row=2, column=1).font = fuente_sub
@@ -1219,7 +1420,7 @@ def exportar_reporte_contable(
     ws.cell(row=resumen_start+5, column=1, value=f"Total IVA ({simbolo})").font = fuente_datos
     ws.cell(row=resumen_start+5, column=2, value=total_iva_usd).number_format = f'"{simbolo}"#,##0.00'
 
-    if especialista == "todos":
+    if personal_id_filtrar is None:
         ws.cell(row=resumen_start+6, column=1, value=f"Total Gastos / Insumos ({simbolo})").font = fuente_datos
         ws.cell(row=resumen_start+6, column=2, value=total_gastos_usd).number_format = f'"{simbolo}"#,##0.00'
 
@@ -2756,7 +2957,6 @@ def admin_pagos_pendientes(request: Request, db: Session = Depends(get_db)):
 @app.get("/api/super-admin/todos-los-pagos")
 def admin_todos_los_pagos(request: Request, skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
     verificar_sesion_master(request)
-    # Paginación nativa eficiente implementada
     pagos = db.query(models.PagoSuscripcion).order_by(models.PagoSuscripcion.fecha_pago.desc()).offset(skip).limit(limit).all()
     resultado = []
     for p in pagos:

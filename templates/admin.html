@@ -209,7 +209,7 @@
                 <h2 id="titulo-contabilidad-panel" class="font-black text-slate-900 text-base flex items-center gap-2">
                     <i class="fa-solid fa-calculator text-pink-500"></i> Contabilidad, Impuestos & Comisiones
                 </h2>
-                <p class="text-xs text-slate-400">Resumen financiero claro, comisiones personalizadas y reportes detallados</p>
+                <p class="text-xs text-slate-400">Resumen financiero claro, comisiones personalizadas y reportes detallados (Corte diario a las 12:00 AM)</p>
             </div>
 
             <div class="flex flex-wrap items-center gap-2 text-xs bg-pink-50/60 p-2 rounded-2xl border border-pink-100">
@@ -232,7 +232,7 @@
         </div>
 
         <div class="space-y-3">
-            <h3 class="font-bold text-xs uppercase tracking-wider text-slate-500">Resumen Financiero por Especialista</h3>
+            <h3 class="font-bold text-xs uppercase tracking-wider text-slate-500">Resumen Financiero por Especialista (Día en Curso)</h3>
             <div id="contenedor-reporte-especialistas" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <p class="text-xs text-slate-400">Cargando contabilidad...</p>
             </div>
@@ -812,6 +812,32 @@
     </div>
 </div>
 
+<!-- MODAL DE HISTORIAL DE CIERRES ANTERIORES -->
+<div id="modal-historial-cierres" class="hidden fixed inset-0 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+    <div class="bg-white border border-pink-200 p-6 rounded-3xl w-full max-w-2xl shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto">
+        <div class="flex justify-between items-center border-b border-pink-100 pb-3">
+            <h3 class="font-black text-slate-900 text-base flex items-center gap-2">
+                <i class="fa-solid fa-clock-rotate-left text-pink-600"></i> Historial de Cierres Diarios: <span id="modal-cierre-especialista-nombre" class="text-pink-600"></span>
+            </h3>
+            <button type="button" onclick="cerrarModalHistorialCierres()" class="text-slate-400 hover:text-slate-700 text-xl font-bold"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        
+        <div id="contenedor-lista-cierres" class="space-y-3">
+            <!-- Contenido dinámico de cierres anteriores -->
+        </div>
+
+        <div id="paginacion-cierres" class="flex justify-between items-center pt-3 border-t border-slate-100 text-xs">
+            <button onclick="cambiarPaginaCierres(-1)" id="btn-cierre-prev" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 font-bold rounded-xl text-slate-700 transition disabled:opacity-40">⬅️ Anterior</button>
+            <span id="info-paginacion-cierres" class="font-bold text-slate-500">Página 1 de 1</span>
+            <button onclick="cambiarPaginaCierres(1)" id="btn-cierre-next" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 font-bold rounded-xl text-slate-700 transition disabled:opacity-40">Siguiente ➡️</button>
+        </div>
+
+        <div class="pt-2 text-center">
+            <button onclick="cerrarModalHistorialCierres()" class="px-6 py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl text-xs uppercase transition">Cerrar Ventana</button>
+        </div>
+    </div>
+</div>
+
 <!-- MODAL DE INFORMACIÓN DETALLADA DE PLANES -->
 <div id="modal-info-planes" class="hidden fixed inset-0 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
     <div class="bg-white border border-pink-200 p-6 rounded-3xl w-full max-w-2xl shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto">
@@ -1061,6 +1087,12 @@
     let myChartTendencia = null;
     let myChartEstados = null;
 
+    // Variables para el modal de historial de cierres
+    let historialCierresActuales = [];
+    let paginaCierresActual = 1;
+    const porPaginaCierres = 3;
+    let especialistaCierreSeleccionadoId = null;
+
     const configPaises = {
         VE: { nombreImpuesto: "IVA", tasaImpuesto: 16, monedaDefault: "USD", simboloDefault: "$", nombreLargo: "🇻🇪 Venezuela" },
         CO: { nombreImpuesto: "IVA", tasaImpuesto: 19, monedaDefault: "COP", simboloDefault: "$", nombreLargo: "🇨🇴 Colombia" },
@@ -1245,7 +1277,7 @@
 
         let duracionServicioMinutos = 45;
         if (selServicio && selServicio.options[selServicio.selectedIndex]) {
-            duracionServicioMinutos = int(selServicio.options[selServicio.selectedIndex].getAttribute('data-duracion')) || 45;
+            duracionServicioMinutos = parseInt(selServicio.options[selServicio.selectedIndex].getAttribute('data-duracion')) || 45;
         }
 
         let fechaObj = new Date(inputFecha + 'T00:00:00');
@@ -2695,8 +2727,14 @@
         let sim = datosNegocioGlobal.simbolo_moneda || '$';
 
         personalGlobal.forEach(p => {
-            let citasCompletadas = citasGlobal.filter(c => c.personal && c.personal.includes(p.nombre) && c.estado === 'completada');
-            let totalBrutoUSD = citasCompletadas.reduce((sum, c) => sum + c.monto_pagado, 0);
+            // Filtrar exclusivamente citas del día en curso (reinicio a las 12:00 AM)
+            let citasCompletadasHoy = citasGlobal.filter(c => {
+                if (!c.personal || !c.personal.includes(p.nombre) || c.estado !== 'completada') return false;
+                let fechaCitaStr = normalizarFecha(c.fecha_hora_inicio);
+                return fechaCitaStr === hoyStr;
+            });
+
+            let totalBrutoUSD = citasCompletadasHoy.reduce((sum, c) => sum + c.monto_pagado, 0);
             
             let impuestoEstimadoUSD = totalBrutoUSD * (infoImp.tasaImpuesto / 100);
             let netoSinImpuestoUSD = totalBrutoUSD - impuestoEstimadoUSD;
@@ -2704,7 +2742,6 @@
             let comisionPct = p.comision_porcentaje !== undefined ? p.comision_porcentaje : 50;
             let comisionTrabajadorUSD = netoSinImpuestoUSD * (comisionPct / 100);
             let netoSalonUSD = netoSinImpuestoUSD - comisionTrabajadorUSD;
-            let citasHoy = citasCompletadas.filter(c => c.fecha_hora_inicio.startsWith(hoyStr)).length;
 
             let extraBsHtml = '';
             if (pais === 'VE') {
@@ -2713,23 +2750,158 @@
             }
 
             let div = document.createElement('div');
-            div.className = "bg-slate-50 p-4 rounded-2xl border border-pink-100 space-y-2 text-xs shadow-sm hover:shadow-md transition";
+            div.className = "bg-slate-50 p-4 rounded-2xl border border-pink-100 space-y-2 text-xs shadow-sm hover:shadow-md transition flex flex-col justify-between";
             div.innerHTML = `
-                <div class="flex justify-between items-center border-b border-slate-200 pb-1.5">
-                    <strong class="text-slate-900 font-black text-sm">${p.nombre}</strong>
-                    <span class="text-[10px] bg-pink-100 text-pink-700 font-bold px-2 py-0.5 rounded-full">${p.especialidad}</span>
-                </div>
-                <div class="space-y-1 text-slate-600">
-                    <p class="flex justify-between"><span>Citas Completadas:</span> <strong class="text-slate-900">${citasCompletadas.length} (${citasHoy} hoy)</strong></p>
-                    <p class="flex justify-between"><span>Total Bruto Recaudado:</span> <strong class="text-emerald-600 font-black">${sim}${totalBrutoUSD.toFixed(2)}</strong></p>
-                    <p class="flex justify-between text-slate-500"><span>${infoImp.nombreImpuesto} (${infoImp.tasaImpuesto}%):</span> <strong>${sim}${impuestoEstimadoUSD.toFixed(2)}</strong></p>
-                    <p class="flex justify-between text-amber-700 font-medium"><span>Comisión Espec. (${comisionPct}%):</span> <strong>${sim}${comisionTrabajadorUSD.toFixed(2)}</strong></p>
-                    <p class="flex justify-between text-pink-700 font-bold border-t border-slate-200 pt-1"><span>Ganancia Neta Salón:</span> <strong>${sim}${netoSalonUSD.toFixed(2)}</strong></p>
-                    ${extraBsHtml}
+                <div>
+                    <div class="flex justify-between items-center border-b border-slate-200 pb-1.5 mb-2">
+                        <strong class="text-slate-900 font-black text-sm">${p.nombre}</strong>
+                        <button onclick="abrirModalHistorialCierres(${p.id}, '${p.nombre}')" class="px-2.5 py-1 bg-pink-100 hover:bg-pink-200 text-pink-700 font-bold rounded-xl text-[10px] transition flex items-center gap-1 shadow-sm" title="Ver Historial de Cierres">
+                            <i class="fa-solid fa-clock-rotate-left"></i> Ver Historial de Cierres
+                        </button>
+                    </div>
+                    <div class="space-y-1 text-slate-600">
+                        <p class="flex justify-between"><span>Citas Completadas (Hoy):</span> <strong class="text-slate-900">${citasCompletadasHoy.length}</strong></p>
+                        <p class="flex justify-between"><span>Total Bruto (Hoy):</span> <strong class="text-emerald-600 font-black">${sim}${totalBrutoUSD.toFixed(2)}</strong></p>
+                        <p class="flex justify-between text-slate-500"><span>${infoImp.nombreImpuesto} (${infoImp.tasaImpuesto}%):</span> <strong>${sim}${impuestoEstimadoUSD.toFixed(2)}</strong></p>
+                        <p class="flex justify-between text-amber-700 font-medium"><span>Comisión Espec. (${comisionPct}%):</span> <strong>${sim}${comisionTrabajadorUSD.toFixed(2)}</strong></p>
+                        <p class="flex justify-between text-pink-700 font-bold border-t border-slate-200 pt-1"><span>Ganancia Neta Salón:</span> <strong>${sim}${netoSalonUSD.toFixed(2)}</strong></p>
+                        ${extraBsHtml}
+                    </div>
                 </div>
             `;
             contenedor.appendChild(div);
         });
+    }
+
+    // Funciones para el Modal de Historial de Cierres
+    async function abrirModalHistorialCierres(personalId, personalNombre) {
+        especialistaCierreSeleccionadoId = personalId;
+        document.getElementById('modal-cierre-especialista-nombre').innerText = personalNombre;
+        paginaCierresActual = 1;
+        
+        await cargarHistorialCierresServidor();
+        document.getElementById('modal-historial-cierres').classList.remove('hidden');
+    }
+
+    function cerrarModalHistorialCierres() {
+        document.getElementById('modal-historial-cierres').classList.add('hidden');
+    }
+
+    async function cargarHistorialCierresServidor() {
+        const contenedor = document.getElementById('contenedor-lista-cierres');
+        contenedor.innerHTML = '<p class="text-xs text-slate-400 text-center py-4">Cargando historial de cierres...</p>';
+
+        try {
+            // Intentar consultar API de cierres del especialista, si no existe simulamos con el histórico de citas o endpoint dedicado
+            let res = await fetch(`/api/profesional/${profesionalId}/cierres-especialista/${especialistaCierreSeleccionadoId}`);
+            if (res.ok) {
+                historialCierresActuales = await res.json();
+            } else {
+                // Generar simulación de cierres anteriores basados en las citas pasadas agrupadas por fecha para robustez
+                historialCierresActuales = generarCierresSimuladosDesdeCitas(especialistaCierreSeleccionadoId);
+            }
+            renderizarListaCierresModal();
+        } catch (e) {
+            historialCierresActuales = generarCierresSimuladosDesdeCitas(especialistaCierreSeleccionadoId);
+            renderizarListaCierresModal();
+        }
+    }
+
+    function generarCierresSimuladosDesdeCitas(personalId) {
+        let p = personalGlobal.find(item => item.id === personalId);
+        if (!p) return [];
+
+        let hoyStr = new Date().toISOString().split('T')[0];
+        let citasEspec = citasGlobal.filter(c => c.personal && c.personal.includes(p.nombre) && c.estado === 'completada');
+        
+        let agrupadas = {};
+        citasEspec.forEach(c => {
+            let fechaStr = normalizarFecha(c.fecha_hora_inicio);
+            if (fechaStr !== hoyStr) { // Excluir el día actual ya que está en la tarjeta principal
+                if (!agrupadas[fechaStr]) agrupadas[fechaStr] = [];
+                agrupadas[fechaStr].push(c);
+            }
+        });
+
+        let sim = datosNegocioGlobal.simbolo_moneda || '$';
+        let pais = datosNegocioGlobal.pais || 'VE';
+        let infoImp = configPaises[pais] || configPaises['VE'];
+        let comisionPct = p.comision_porcentaje !== undefined ? p.comision_porcentaje : 50;
+
+        let listaCierres = [];
+        for (let fecha in agrupadas) {
+            let citasDia = agrupadas[fecha];
+            let totalBruto = citasDia.reduce((sum, c) => sum + c.monto_pagado, 0);
+            let impuesto = totalBruto * (infoImp.tasaImpuesto / 100);
+            let netoSinImp = totalBruto - impuesto;
+            let comisionTrabajador = netoSinImp * (comisionPct / 100);
+            let netoSalon = netoSinImp - comisionTrabajador;
+
+            listaCierres.push({
+                fecha: fecha,
+                total_citas: citasDia.length,
+                total_bruto: totalBruto,
+                impuesto: impuesto,
+                comision_especialista: comisionTrabajador,
+                ganancia_salon: netoSalon
+            });
+        }
+
+        listaCierres.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+        return listaCierres;
+    }
+
+    function renderizarListaCierresModal() {
+        const contenedor = document.getElementById('contenedor-lista-cierres');
+        const controles = document.getElementById('paginacion-cierres');
+        contenedor.innerHTML = '';
+
+        if (historialCierresActuales.length === 0) {
+            contenedor.innerHTML = '<p class="text-xs text-slate-400 text-center py-6">No hay cierres anteriores registrados para este especialista.</p>';
+            if (controles) controles.classList.add('hidden');
+            return;
+        }
+
+        let totalPaginas = Math.ceil(historialCierresActuales.length / porPaginaCierres);
+        if (paginaCierresActual > totalPaginas) paginaCierresActual = totalPaginas;
+
+        let inicio = (paginaCierresActual - 1) * porPaginaCierres;
+        let fin = inicio + porPaginaCierres;
+        let paginados = historialCierresActuales.slice(inicio, fin);
+
+        let sim = datosNegocioGlobal.simbolo_moneda || '$';
+
+        paginados.forEach(cierre => {
+            let div = document.createElement('div');
+            div.className = "bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2 text-xs shadow-sm";
+            div.innerHTML = `
+                <div class="flex justify-between items-center border-b border-slate-200 pb-1.5">
+                    <span class="font-black text-slate-900 text-sm">📅 Cierre Diario: ${cierre.fecha}</span>
+                    <span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold rounded-full text-[10px]">Cerrado (12:00 AM)</span>
+                </div>
+                <div class="grid grid-cols-2 gap-2 text-slate-600">
+                    <p>Citas Completadas: <strong class="text-slate-900">${cierre.total_citas}</strong></p>
+                    <p>Total Bruto: <strong class="text-emerald-600 font-bold">${sim}${cierre.total_bruto.toFixed(2)}</strong></p>
+                    <p>Comisión Especialista: <strong class="text-amber-700">${sim}${cierre.comision_especialista.toFixed(2)}</strong></p>
+                    <p>Ganancia Salón: <strong class="text-pink-700 font-black">${sim}${cierre.ganancia_salon.toFixed(2)}</strong></p>
+                </div>
+            `;
+            contenedor.appendChild(div);
+        });
+
+        if (totalPaginas > 1) {
+            if (controles) controles.classList.remove('hidden');
+            document.getElementById('info-paginacion-cierres').innerText = `Página ${paginaCierresActual} de ${totalPaginas}`;
+            document.getElementById('btn-cierre-prev').disabled = paginaCierresActual === 1;
+            document.getElementById('btn-cierre-next').disabled = paginaCierresActual === totalPaginas;
+        } else {
+            if (controles) controles.classList.add('hidden');
+        }
+    }
+
+    function cambiarPaginaCierres(dir) {
+        paginaCierresActual += dir;
+        renderizarListaCierresModal();
     }
 
     function enviarRecordatorioWhatsApp(nombre, wsp, fechaHora, servicio) {
